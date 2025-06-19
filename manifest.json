@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Selenium Code Generator",
+  "version": "1.0",
+  "description": "Generate Java Selenium code from web navigation.",
+  "permissions": [
+    "scripting",
+    "activeTab",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Selenium Code Generator"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ]
+    }
+  ]
+}
