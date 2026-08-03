@@ -1,58 +1,45 @@
-function getSelector(element) {
-  if (element.id) return `By.id("${element.id}")`;
-  if (element.name) return `By.name("${element.name}")`;
-  if (element.className) return `By.className("${element.className.split(' ')[0]}")`;
-  return `By.cssSelector("${element.tagName.toLowerCase()}")`;
+function getSelectorDescriptor(element) {
+  if (element.id) return { strategy: 'id', value: element.id };
+  if (element.name) return { strategy: 'name', value: element.name };
+  if (element.className) return { strategy: 'className', value: element.className.split(' ')[0] };
+  return { strategy: 'css', value: element.tagName.toLowerCase() };
 }
 
-async function appendCode(code) {
-  const { seleniumCode } = await chrome.storage.local.get('seleniumCode');
-  const codeLines = seleniumCode && seleniumCode.length
-    ? seleniumCode
-    : ['WebDriver driver = new ChromeDriver();'];
-  codeLines.push(code);
-  await chrome.storage.local.set({ seleniumCode: codeLines });
+async function recordAction(action) {
+  const { recordedActions } = await chrome.storage.local.get('recordedActions');
+  const actions = recordedActions || [];
+  actions.push(action);
+  await chrome.storage.local.set({ recordedActions: actions });
 }
 
 document.addEventListener('click', function (e) {
-  const el = e.target;
-  const selector = getSelector(el);
-  appendCode(`driver.findElement(${selector}).click();`);
+  recordAction({ type: 'click', selector: getSelectorDescriptor(e.target) });
 });
 
 document.addEventListener('input', function (e) {
-  const el = e.target;
-  const selector = getSelector(el);
-  const value = el.value;
-  appendCode(`driver.findElement(${selector}).sendKeys("${value}");`);
+  recordAction({ type: 'input', selector: getSelectorDescriptor(e.target), value: e.target.value });
 });
 
 document.addEventListener('change', function (e) {
   const el = e.target;
   if (el.type === 'radio') {
-    const selector = getSelector(el);
-    appendCode(`driver.findElement(${selector}).click();`);
+    recordAction({ type: 'radio', selector: getSelectorDescriptor(el) });
   }
 });
 
 document.addEventListener('change', function (e) {
   const el = e.target;
   if (el.type === 'checkbox') {
-    const selector = getSelector(el);
-    appendCode(`if (${el.checked}) { driver.findElement(${selector}).click(); }`);
+    recordAction({ type: 'checkbox', selector: getSelectorDescriptor(el), checked: el.checked });
   }
 });
 
 document.addEventListener('submit', function (e) {
-  const el = e.target;
-  const selector = getSelector(el);
-  appendCode(`driver.findElement(${selector}).submit();`);
+  recordAction({ type: 'submit', selector: getSelectorDescriptor(e.target) });
 });
 
 document.addEventListener('dblclick', function (e) {
-  const el = e.target;
-  const selector = getSelector(el);
-  appendCode(`((JavascriptExecutor) driver).executeScript("var evt = document.createEvent('MouseEvents'); evt.initEvent('dblclick', true, true); arguments[0].dispatchEvent(evt);", driver.findElement(${selector}));`);
+  recordAction({ type: 'dblclick', selector: getSelectorDescriptor(e.target) });
 });
 
 // document.addEventListener('mouseover', function (e) {

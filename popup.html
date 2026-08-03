@@ -4,35 +4,91 @@
 <head>
   <title>Selenium Code Generator</title>
   <style>
+    body {
+      font-family: sans-serif;
+      width: 600px;
+    }
+
     textarea {
       width: 100%;
-      height: 200px;
+      height: 260px;
       font-family: monospace;
+      box-sizing: border-box;
+    }
+
+    .controls {
+      margin-bottom: 8px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .tab-strip {
+      display: none;
+      margin-bottom: 4px;
+      gap: 4px;
+    }
+
+    .tab-strip.visible {
+      display: flex;
+    }
+
+    .tab-strip button {
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+
+    .tab-strip button.active {
+      font-weight: bold;
+      background: #ddd;
+    }
+
+    .code-panel {
+      display: none;
+    }
+
+    .code-panel.active {
+      display: block;
     }
   </style>
 </head>
 
 <body>
-  <h3>Generated Selenium Code</h3>
-  <textarea id="codeBox" readonly>Loading...</textarea>
-  <button id="copyButton">Copy to Clipboard</button>
-  <button id="clearButton">Clear</button>
+  <h3>Generated Test Code</h3>
 
-  <script>
-    document.getElementById('copyButton').addEventListener('click', function () {
-      const codeBox = document.getElementById('codeBox');
-      codeBox.select();
-      document.execCommand('copy');
-      alert('Copied to clipboard!');
-    });
+  <div class="controls">
+    <label for="frameworkSelect">Framework:</label>
+    <select id="frameworkSelect">
+      <option value="selenium">Selenium (Java)</option>
+      <option value="cypress">Cypress (JavaScript)</option>
+      <option value="playwright">Playwright (TypeScript)</option>
+      <option value="all">All (tabbed)</option>
+    </select>
+  </div>
 
-    document.getElementById('clearButton').addEventListener('click', function () {
-      const codeBox = document.getElementById('codeBox');
-      codeBox.value = '';
-    });
-  </script>
+  <div class="tab-strip" id="tabStrip">
+    <button data-framework="selenium" class="active">Selenium</button>
+    <button data-framework="cypress">Cypress</button>
+    <button data-framework="playwright">Playwright</button>
+  </div>
+
+  <div class="code-panel active" id="panel-selenium">
+    <textarea id="codeBox-selenium" readonly>Loading...</textarea>
+  </div>
+  <div class="code-panel" id="panel-cypress">
+    <textarea id="codeBox-cypress" readonly>Loading...</textarea>
+  </div>
+  <div class="code-panel" id="panel-playwright">
+    <textarea id="codeBox-playwright" readonly>Loading...</textarea>
+  </div>
+
+  <div class="controls">
+    <button id="copyButton">Copy to Clipboard</button>
+    <button id="clearButton">Clear</button>
+  </div>
+
+  <script src="codegen.js"></script>
   <script src="popup.js"></script>
 </body>
-<script src="popup.js"></script>
 
 </html>

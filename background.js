@@ -11,16 +11,13 @@ chrome.action.onClicked.addListener(() => {
 async function recordNavigation(url) {
   if (!/^https?:/.test(url)) return;
 
-  const { seleniumCode } = await chrome.storage.local.get('seleniumCode');
-  const codeLines = seleniumCode && seleniumCode.length
-    ? seleniumCode
-    : ['WebDriver driver = new ChromeDriver();'];
+  const { recordedActions } = await chrome.storage.local.get('recordedActions');
+  const actions = recordedActions || [];
+  const last = actions[actions.length - 1];
+  if (last && last.type === 'navigate' && last.url === url) return;
 
-  const code = `driver.get("${url}");`;
-  if (codeLines[codeLines.length - 1] === code) return;
-
-  codeLines.push(code);
-  await chrome.storage.local.set({ seleniumCode: codeLines });
+  actions.push({ type: 'navigate', url });
+  await chrome.storage.local.set({ recordedActions: actions });
 }
 
 // Full page loads, reloads, and link-driven navigations.
