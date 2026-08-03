@@ -1,8 +1,22 @@
 function getSelectorDescriptor(element) {
-  if (element.id) return { strategy: 'id', value: element.id };
-  if (element.name) return { strategy: 'name', value: element.name };
-  if (element.className) return { strategy: 'className', value: element.className.split(' ')[0] };
-  return { strategy: 'css', value: element.tagName.toLowerCase() };
+  const testId = element.getAttribute('data-testid');
+  if (testId) return { strategy: 'testid', value: testId, fragile: false };
+
+  const ariaLabel = element.getAttribute('aria-label');
+  if (ariaLabel) return { strategy: 'ariaLabel', value: ariaLabel, fragile: false };
+
+  const role = element.getAttribute('role');
+  if (role) return { strategy: 'role', value: role, fragile: false };
+
+  const text = (element.textContent || '').trim();
+  if (text && text.length <= 60) {
+    return { strategy: 'text', value: text, tag: element.tagName.toLowerCase(), fragile: false };
+  }
+
+  if (element.id) return { strategy: 'id', value: element.id, fragile: false };
+  if (element.name) return { strategy: 'name', value: element.name, fragile: false };
+
+  return { strategy: 'css', value: element.tagName.toLowerCase(), fragile: true };
 }
 
 async function recordAction(action) {
