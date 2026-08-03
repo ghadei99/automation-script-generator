@@ -2,10 +2,8 @@
   "manifest_version": 3,
   "name": "Selenium Code Generator",
   "version": "1.0",
-  "description": "Generate Java Selenium code from web navigation.",
+  "description": "Record browser interactions and API calls, then generate Selenium, Cypress, Playwright, and Rest Assured test code.",
   "permissions": [
-    "scripting",
-    "activeTab",
     "storage",
     "webNavigation"
   ],

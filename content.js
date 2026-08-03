@@ -71,26 +71,3 @@ window.addEventListener('__selRecorderApiCall', function (e) {
   }
 });
 
-// document.addEventListener('mouseover', function (e) {
-//   const el = e.target;
-//   const selector = getSelector(el);
-//   const code = `Actions actions = new Actions(driver); actions.moveToElement(driver.findElement(${selector})).perform();`;
-//   codeLines.push(code);
-//   updateStorage();
-// });
-
-// document.addEventListener('change', function (e) {
-//   const el = e.target;
-//   const selector = getSelector(el);
-//   const value = el.value;
-//   const code = `driver.findElement(${selector}).sendKeys("${value}");`;
-//   // console.log('the code is :-' + code);   
-// });
-
-// document.addEventListener('scroll', function (e) {
-//   const code = `((JavascriptExecutor) driver).executeScript("window.scrollBy(0, arguments[0]);", ${window.scrollY});`;
-//   codeLines.push(code);
-//   updateStorage();
-// });
-
-
