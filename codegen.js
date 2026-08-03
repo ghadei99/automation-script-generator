@@ -109,4 +109,78 @@ function renderPlaywright(actions) {
   return lines.join('\n');
 }
 
-window.CodeGen = { renderSelenium, renderCypress, renderPlaywright, toCssSelector, seleniumBy, escapeStr };
+function tryParseJson(text) {
+  if (typeof text !== 'string' || text.length === 0) return null;
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+}
+
+function jsonScalarLiteral(value) {
+  if (typeof value === 'string') return `"${escapeStr(value)}"`;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (value === null) return 'null';
+  return null;
+}
+
+function renderBodyAssertions(responseBody) {
+  const parsed = tryParseJson(responseBody);
+  if (parsed === null || typeof parsed !== 'object') return [];
+
+  if (Array.isArray(parsed)) {
+    return [`.body("size()", equalTo(${parsed.length}))`];
+  }
+
+  const assertions = [];
+  for (const [key, value] of Object.entries(parsed)) {
+    if (Array.isArray(value)) {
+      assertions.push(`.body("${escapeStr(key)}.size()", equalTo(${value.length}))`);
+      continue;
+    }
+    const literal = jsonScalarLiteral(value);
+    if (literal !== null) {
+      assertions.push(`.body("${escapeStr(key)}", equalTo(${literal}))`);
+    } else if (value !== null && typeof value === 'object') {
+      assertions.push(`.body("${escapeStr(key)}", notNullValue())`);
+    }
+  }
+  return assertions;
+}
+
+function renderRestAssured(apiCalls) {
+  const blocks = apiCalls.map((call) => {
+    const lines = ['given()'];
+    if (call.requestBody) {
+      lines.push('    .contentType("application/json")');
+      lines.push(`    .body("${escapeStr(call.requestBody)}")`);
+    }
+    lines.push('.when()');
+    const method = (call.method || 'GET').toLowerCase();
+    lines.push(`    .${method}("${escapeStr(call.url)}")`);
+    lines.push('.then()');
+
+    const thenLines = [`    .statusCode(${call.status})`];
+    if (call.contentType) {
+      thenLines.push(`    .contentType(containsString("${escapeStr(call.contentType.split(';')[0].trim())}"))`);
+    }
+    for (const assertion of renderBodyAssertions(call.responseBody)) {
+      thenLines.push(`    ${assertion}`);
+    }
+    lines.push(thenLines.join('\n'));
+
+    return lines.join('\n') + ';';
+  });
+  return blocks.join('\n\n');
+}
+
+window.CodeGen = {
+  renderSelenium,
+  renderCypress,
+  renderPlaywright,
+  renderRestAssured,
+  toCssSelector,
+  seleniumBy,
+  escapeStr,
+};

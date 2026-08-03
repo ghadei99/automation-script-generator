@@ -6,12 +6,12 @@
   <style>
     body {
       font-family: sans-serif;
-      width: 600px;
+      width: 640px;
     }
 
     textarea {
       width: 100%;
-      height: 260px;
+      height: 240px;
       font-family: monospace;
       box-sizing: border-box;
     }
@@ -21,6 +21,34 @@
       display: flex;
       gap: 8px;
       align-items: center;
+    }
+
+    .section-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 10px;
+      border-bottom: 1px solid #ccc;
+    }
+
+    .section-tabs button {
+      padding: 6px 12px;
+      cursor: pointer;
+      border: none;
+      background: none;
+      border-bottom: 2px solid transparent;
+    }
+
+    .section-tabs button.active {
+      font-weight: bold;
+      border-bottom: 2px solid #333;
+    }
+
+    .section {
+      display: none;
+    }
+
+    .section.active {
+      display: block;
     }
 
     .tab-strip {
@@ -56,30 +84,43 @@
 <body>
   <h3>Generated Test Code</h3>
 
-  <div class="controls">
-    <label for="frameworkSelect">Framework:</label>
-    <select id="frameworkSelect">
-      <option value="selenium">Selenium (Java)</option>
-      <option value="cypress">Cypress (JavaScript)</option>
-      <option value="playwright">Playwright (TypeScript)</option>
-      <option value="all">All (tabbed)</option>
-    </select>
+  <div class="section-tabs" id="sectionTabs">
+    <button data-section="ui" class="active">UI Automation</button>
+    <button data-section="api">API Tests (Rest Assured)</button>
   </div>
 
-  <div class="tab-strip" id="tabStrip">
-    <button data-framework="selenium" class="active">Selenium</button>
-    <button data-framework="cypress">Cypress</button>
-    <button data-framework="playwright">Playwright</button>
+  <div class="section active" id="section-ui">
+    <div class="controls">
+      <label for="frameworkSelect">Framework:</label>
+      <select id="frameworkSelect">
+        <option value="selenium">Selenium (Java)</option>
+        <option value="cypress">Cypress (JavaScript)</option>
+        <option value="playwright">Playwright (TypeScript)</option>
+        <option value="all">All (tabbed)</option>
+      </select>
+    </div>
+
+    <div class="tab-strip" id="tabStrip">
+      <button data-framework="selenium" class="active">Selenium</button>
+      <button data-framework="cypress">Cypress</button>
+      <button data-framework="playwright">Playwright</button>
+    </div>
+
+    <div class="code-panel active" id="panel-selenium">
+      <textarea id="codeBox-selenium" readonly>Loading...</textarea>
+    </div>
+    <div class="code-panel" id="panel-cypress">
+      <textarea id="codeBox-cypress" readonly>Loading...</textarea>
+    </div>
+    <div class="code-panel" id="panel-playwright">
+      <textarea id="codeBox-playwright" readonly>Loading...</textarea>
+    </div>
   </div>
 
-  <div class="code-panel active" id="panel-selenium">
-    <textarea id="codeBox-selenium" readonly>Loading...</textarea>
-  </div>
-  <div class="code-panel" id="panel-cypress">
-    <textarea id="codeBox-cypress" readonly>Loading...</textarea>
-  </div>
-  <div class="code-panel" id="panel-playwright">
-    <textarea id="codeBox-playwright" readonly>Loading...</textarea>
+  <div class="section" id="section-api">
+    <div class="code-panel active" id="panel-restassured">
+      <textarea id="codeBox-restassured" readonly>Loading...</textarea>
+    </div>
   </div>
 
   <div class="controls">

@@ -42,6 +42,21 @@ document.addEventListener('dblclick', function (e) {
   recordAction({ type: 'dblclick', selector: getSelectorDescriptor(e.target) });
 });
 
+async function recordApiCall(record) {
+  const { recordedApiCalls } = await chrome.storage.local.get('recordedApiCalls');
+  const calls = recordedApiCalls || [];
+  calls.push(record);
+  await chrome.storage.local.set({ recordedApiCalls: calls });
+}
+
+window.addEventListener('__selRecorderApiCall', function (e) {
+  try {
+    recordApiCall(JSON.parse(e.detail));
+  } catch (err) {
+    // Malformed capture payload -- drop it rather than corrupt the recording.
+  }
+});
+
 // document.addEventListener('mouseover', function (e) {
 //   const el = e.target;
 //   const selector = getSelector(el);

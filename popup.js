@@ -1,4 +1,5 @@
 const FRAMEWORKS = ['selenium', 'cypress', 'playwright'];
+const SECTIONS = ['ui', 'api'];
 
 function renderAll(actions) {
   const renderers = {
@@ -12,6 +13,11 @@ function renderAll(actions) {
   }
 }
 
+function renderApiCalls(apiCalls) {
+  const code = apiCalls.length ? window.CodeGen.renderRestAssured(apiCalls) : '// No API calls captured yet.';
+  document.getElementById('codeBox-restassured').value = code;
+}
+
 function setActiveFramework(framework) {
   for (const fw of FRAMEWORKS) {
     document.getElementById(`panel-${fw}`).classList.toggle('active', fw === framework);
@@ -21,13 +27,24 @@ function setActiveFramework(framework) {
   });
 }
 
+function setActiveSection(section) {
+  for (const s of SECTIONS) {
+    document.getElementById(`section-${s}`).classList.toggle('active', s === section);
+  }
+  document.querySelectorAll('#sectionTabs button').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.section === section);
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const frameworkSelect = document.getElementById('frameworkSelect');
   const tabStrip = document.getElementById('tabStrip');
+  const sectionTabs = document.getElementById('sectionTabs');
 
   const updateCodeBoxes = () => {
-    chrome.storage.local.get('recordedActions', (result) => {
+    chrome.storage.local.get(['recordedActions', 'recordedApiCalls'], (result) => {
       renderAll(result.recordedActions || []);
+      renderApiCalls(result.recordedApiCalls || []);
     });
   };
 
@@ -49,8 +66,12 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => setActiveFramework(btn.dataset.framework));
   });
 
+  sectionTabs.querySelectorAll('button').forEach((btn) => {
+    btn.addEventListener('click', () => setActiveSection(btn.dataset.section));
+  });
+
   document.getElementById('copyButton').addEventListener('click', () => {
-    const activeTextarea = document.querySelector('.code-panel.active textarea');
+    const activeTextarea = document.querySelector('.section.active .code-panel.active textarea');
     navigator.clipboard.writeText(activeTextarea.value).then(() => {
       alert('Copied to clipboard!');
     }).catch((err) => {
@@ -59,14 +80,15 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('clearButton').addEventListener('click', () => {
-    chrome.storage.local.set({ recordedActions: [] });
+    chrome.storage.local.set({ recordedActions: [], recordedApiCalls: [] });
   });
 
   updateCodeBoxes();
   applyFrameworkChoice();
+  setActiveSection('ui');
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === 'local' && changes.recordedActions) {
+    if (areaName === 'local' && (changes.recordedActions || changes.recordedApiCalls)) {
       updateCodeBoxes();
     }
   });
