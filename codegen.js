@@ -38,103 +38,231 @@ function cypressLocator(selector) {
   return `cy.get('${toCssSelector(selector)}')`;
 }
 
-function playwrightLocator(selector) {
+function playwrightLocator(selector, pageRef) {
   if (selector.strategy === 'text') {
-    return `page.getByText("${escapeStr(selector.value)}")`;
+    return `${pageRef}.getByText("${escapeStr(selector.value)}")`;
   }
-  return `page.locator('${toCssSelector(selector)}')`;
+  return `${pageRef}.locator('${toCssSelector(selector)}')`;
+}
+
+function toIdentifier(text) {
+  const words = String(text)
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length === 0) return 'Element';
+  return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('');
+}
+
+const METHOD_PREFIXES = {
+  click: 'click',
+  radio: 'select',
+  checkbox: 'set',
+  input: 'enter',
+  submit: 'submit',
+  dblclick: 'doubleClick',
+};
+
+// Groups actions into one reusable page-object method per distinct (type, selector)
+// pair, and a separate ordered call sequence -- so an element interacted with twice
+// gets one method definition invoked twice, rather than two duplicate methods.
+function buildPageModel(actions) {
+  const methods = [];
+  const methodKeyToName = new Map();
+  const usedNames = new Set();
+  const calls = [];
+
+  function uniqueName(base) {
+    let name = base;
+    let i = 2;
+    while (usedNames.has(name)) {
+      name = `${base}${i}`;
+      i += 1;
+    }
+    usedNames.add(name);
+    return name;
+  }
+
+  for (const action of actions) {
+    if (action.type === 'navigate') {
+      if (!methodKeyToName.has('navigate')) {
+        const name = uniqueName('navigateTo');
+        methodKeyToName.set('navigate', name);
+        methods.push({ name, type: 'navigate' });
+      }
+      calls.push({ name: methodKeyToName.get('navigate'), args: [action.url] });
+      continue;
+    }
+
+    const sel = action.selector;
+    const key = `${action.type}:${sel.strategy}:${sel.value}`;
+    let name = methodKeyToName.get(key);
+    if (!name) {
+      name = uniqueName(`${METHOD_PREFIXES[action.type]}${toIdentifier(sel.value)}`);
+      methodKeyToName.set(key, name);
+      methods.push({ name, type: action.type, selector: sel });
+    }
+
+    const args = [];
+    if (action.type === 'input') args.push(action.value);
+    if (action.type === 'checkbox') args.push(action.checked);
+    calls.push({ name, args });
+  }
+
+  return { methods, calls };
+}
+
+function renderCallArgs(args) {
+  return args.map((a) => (typeof a === 'boolean' ? String(a) : `"${escapeStr(a)}"`)).join(', ');
+}
+
+function renderSeleniumMethod(method) {
+  const by = method.selector ? seleniumBy(method.selector) : null;
+  const flag = fragileComment(method.selector);
+  switch (method.type) {
+    case 'navigate':
+      return '    public void navigateTo(String url) {\n        driver.get(url);\n    }';
+    case 'click':
+    case 'radio':
+      return `    public void ${method.name}() {\n        driver.findElement(${by}).click();${flag}\n    }`;
+    case 'checkbox':
+      return `    public void ${method.name}(boolean checked) {\n        WebElement element = driver.findElement(${by});${flag}\n        if (element.isSelected() != checked) {\n            element.click();\n        }\n    }`;
+    case 'input':
+      return `    public void ${method.name}(String value) {\n        driver.findElement(${by}).sendKeys(value);${flag}\n    }`;
+    case 'submit':
+      return `    public void ${method.name}() {\n        driver.findElement(${by}).submit();${flag}\n    }`;
+    case 'dblclick':
+      return `    public void ${method.name}() {\n        ((JavascriptExecutor) driver).executeScript("var evt = document.createEvent('MouseEvents'); evt.initEvent('dblclick', true, true); arguments[0].dispatchEvent(evt);", driver.findElement(${by}));${flag}\n    }`;
+    default:
+      return '';
+  }
 }
 
 function renderSelenium(actions) {
-  const lines = ['WebDriver driver = new ChromeDriver();'];
-  for (const action of actions) {
-    const by = action.selector ? seleniumBy(action.selector) : null;
-    const flag = fragileComment(action.selector);
-    switch (action.type) {
-      case 'navigate':
-        lines.push(`driver.get("${escapeStr(action.url)}");`);
-        break;
-      case 'click':
-      case 'radio':
-      case 'checkbox':
-        lines.push(`driver.findElement(${by}).click();${flag}`);
-        break;
-      case 'input':
-        lines.push(`driver.findElement(${by}).sendKeys("${escapeStr(action.value)}");${flag}`);
-        break;
-      case 'submit':
-        lines.push(`driver.findElement(${by}).submit();${flag}`);
-        break;
-      case 'dblclick':
-        lines.push(`((JavascriptExecutor) driver).executeScript("var evt = document.createEvent('MouseEvents'); evt.initEvent('dblclick', true, true); arguments[0].dispatchEvent(evt);", driver.findElement(${by}));${flag}`);
-        break;
-    }
+  const { methods, calls } = buildPageModel(actions);
+  const methodBlocks = methods.map(renderSeleniumMethod).join('\n\n');
+
+  const pageClass = [
+    'public class RecordedPage {',
+    '    private final WebDriver driver;',
+    '',
+    '    public RecordedPage(WebDriver driver) {',
+    '        this.driver = driver;',
+    '    }',
+    '',
+    methodBlocks,
+    '}',
+  ].join('\n');
+
+  const callLines = calls.map((c) => `        page.${c.name}(${renderCallArgs(c.args)});`).join('\n');
+  const testClass = [
+    'public class RecordedTest {',
+    '    public static void main(String[] args) {',
+    '        WebDriver driver = new ChromeDriver();',
+    '        RecordedPage page = new RecordedPage(driver);',
+    '',
+    callLines,
+    '    }',
+    '}',
+  ].join('\n');
+
+  return `// ==== RecordedPage.java ====\n${pageClass}\n\n// ==== RecordedTest.java ====\n${testClass}`;
+}
+
+function renderCypressMethod(method) {
+  const locator = method.selector ? cypressLocator(method.selector) : null;
+  const flag = fragileComment(method.selector);
+  switch (method.type) {
+    case 'navigate':
+      return '  navigateTo(url) {\n    cy.visit(url);\n    return this;\n  }';
+    case 'click':
+      return `  ${method.name}() {\n    ${locator}.click();${flag}\n    return this;\n  }`;
+    case 'radio':
+      return `  ${method.name}() {\n    ${locator}.check();${flag}\n    return this;\n  }`;
+    case 'checkbox':
+      return `  ${method.name}(checked) {\n    if (checked) {\n      ${locator}.check();${flag}\n    } else {\n      ${locator}.uncheck();${flag}\n    }\n    return this;\n  }`;
+    case 'input':
+      return `  ${method.name}(value) {\n    ${locator}.clear().type(value);${flag}\n    return this;\n  }`;
+    case 'submit':
+      return `  ${method.name}() {\n    ${locator}.submit();${flag}\n    return this;\n  }`;
+    case 'dblclick':
+      return `  ${method.name}() {\n    ${locator}.dblclick();${flag}\n    return this;\n  }`;
+    default:
+      return '';
   }
-  return lines.join('\n');
 }
 
 function renderCypress(actions) {
-  const lines = [];
-  for (const action of actions) {
-    const locator = action.selector ? cypressLocator(action.selector) : null;
-    const flag = fragileComment(action.selector);
-    switch (action.type) {
-      case 'navigate':
-        lines.push(`cy.visit("${escapeStr(action.url)}");`);
-        break;
-      case 'click':
-        lines.push(`${locator}.click();${flag}`);
-        break;
-      case 'radio':
-        lines.push(`${locator}.check();${flag}`);
-        break;
-      case 'checkbox':
-        lines.push(`${locator}.${action.checked ? 'check' : 'uncheck'}();${flag}`);
-        break;
-      case 'input':
-        lines.push(`${locator}.clear().type("${escapeStr(action.value)}");${flag}`);
-        break;
-      case 'submit':
-        lines.push(`${locator}.submit();${flag}`);
-        break;
-      case 'dblclick':
-        lines.push(`${locator}.dblclick();${flag}`);
-        break;
-    }
+  const { methods, calls } = buildPageModel(actions);
+  const methodBlocks = methods.map(renderCypressMethod).join('\n\n');
+
+  const pageClass = ['class RecordedPage {', methodBlocks, '}', '', 'export default RecordedPage;'].join('\n');
+
+  const callLines = calls.map((c) => `    page.${c.name}(${renderCallArgs(c.args)});`).join('\n');
+  const testFile = [
+    "import RecordedPage from './RecordedPage';",
+    '',
+    "describe('Recorded session', () => {",
+    "  it('replays the recorded actions', () => {",
+    '    const page = new RecordedPage();',
+    callLines,
+    '  });',
+    '});',
+  ].join('\n');
+
+  return `// ==== RecordedPage.js ====\n${pageClass}\n\n// ==== recorded.cy.js ====\n${testFile}`;
+}
+
+function renderPlaywrightMethod(method) {
+  const locator = method.selector ? playwrightLocator(method.selector, 'this.page') : null;
+  const flag = fragileComment(method.selector);
+  switch (method.type) {
+    case 'navigate':
+      return '  async navigateTo(url: string) {\n    await this.page.goto(url);\n  }';
+    case 'click':
+      return `  async ${method.name}() {\n    await ${locator}.click();${flag}\n  }`;
+    case 'radio':
+      return `  async ${method.name}() {\n    await ${locator}.check();${flag}\n  }`;
+    case 'checkbox':
+      return `  async ${method.name}(checked: boolean) {\n    if (checked) {\n      await ${locator}.check();${flag}\n    } else {\n      await ${locator}.uncheck();${flag}\n    }\n  }`;
+    case 'input':
+      return `  async ${method.name}(value: string) {\n    await ${locator}.fill(value);${flag}\n  }`;
+    case 'submit':
+      return `  async ${method.name}() {\n    await ${locator}.evaluate((form) => (form as HTMLFormElement).submit());${flag}\n  }`;
+    case 'dblclick':
+      return `  async ${method.name}() {\n    await ${locator}.dblclick();${flag}\n  }`;
+    default:
+      return '';
   }
-  return lines.join('\n');
 }
 
 function renderPlaywright(actions) {
-  const lines = [];
-  for (const action of actions) {
-    const locator = action.selector ? playwrightLocator(action.selector) : null;
-    const flag = fragileComment(action.selector);
-    switch (action.type) {
-      case 'navigate':
-        lines.push(`await page.goto("${escapeStr(action.url)}");`);
-        break;
-      case 'click':
-        lines.push(`await ${locator}.click();${flag}`);
-        break;
-      case 'radio':
-        lines.push(`await ${locator}.check();${flag}`);
-        break;
-      case 'checkbox':
-        lines.push(`await ${locator}.${action.checked ? 'check' : 'uncheck'}();${flag}`);
-        break;
-      case 'input':
-        lines.push(`await ${locator}.fill("${escapeStr(action.value)}");${flag}`);
-        break;
-      case 'submit':
-        lines.push(`await ${locator}.evaluate((form) => form.submit());${flag}`);
-        break;
-      case 'dblclick':
-        lines.push(`await ${locator}.dblclick();${flag}`);
-        break;
-    }
-  }
-  return lines.join('\n');
+  const { methods, calls } = buildPageModel(actions);
+  const methodBlocks = methods.map(renderPlaywrightMethod).join('\n\n');
+
+  const pageClass = [
+    "import { Page } from '@playwright/test';",
+    '',
+    'export class RecordedPage {',
+    '  constructor(private page: Page) {}',
+    '',
+    methodBlocks,
+    '}',
+  ].join('\n');
+
+  const callLines = calls.map((c) => `  await page.${c.name}(${renderCallArgs(c.args)});`).join('\n');
+  const testFile = [
+    "import { test } from '@playwright/test';",
+    "import { RecordedPage } from './RecordedPage';",
+    '',
+    "test('replays the recorded actions', async ({ page: pwPage }) => {",
+    '  const page = new RecordedPage(pwPage);',
+    callLines,
+    '});',
+  ].join('\n');
+
+  return `// ==== RecordedPage.ts ====\n${pageClass}\n\n// ==== recorded.spec.ts ====\n${testFile}`;
 }
 
 function tryParseJson(text) {
