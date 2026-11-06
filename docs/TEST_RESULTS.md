@@ -205,3 +205,25 @@ node test/persistence.mjs
 `node test/ai-flow.mjs`: 4 passed, 0 failed.
 
 `node test/persistence.mjs`: the UI save, Chrome restart, and reopened step list passed. The extensions-page Reload check remains the known debug-session limitation and is not a product failure.
+
+## Pre-merge check, 2026-11-06
+
+`03cd199` is an ancestor of this branch. `master` (`6bb3e23`) has no commits that this branch lacks. Nothing was merged.
+
+A click is removed only when the next click has the same selector and the same recorder timestamp. Two clicks with different timestamps, and two clicks with no timestamp, both stay. A non-unique semantic locator is exported as its structural CSS path with the structural warning. Method names that would collide are suffixed (`clickSave`, `clickSave2`).
+
+`npm test`: 19 passed, 0 failed, 1 skipped (live provider, secrets unset).
+
+`node test/acceptance.mjs`: 16/16 passed.
+
+`node test/ai-login.mjs`: 5/5 passed.
+
+`node test/screenshot.mjs`: 5 passed, 0 failed. No image was invented.
+
+`node test/playwright-export.mjs`: success spec passed. The deliberate failure expected `http://127.0.0.1:55122/not-the-app` and received `http://127.0.0.1:55122/app.html`. The password was absent.
+
+`node test/ai-flow.mjs`: 4/4 passed.
+
+`node test/shop.mjs`: 5 passed, 0 failed.
+
+`node test/persistence.mjs`: product save, Chrome restart, and reopened steps passed. The extensions Reload check is still the debug-session limitation.

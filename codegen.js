@@ -169,6 +169,24 @@ function plainUrl(value, allowPartial) {
   return allowPartial ? text : '';
 }
 
+function confirmedUnique(selector) {
+  if (!selector || selector.ambiguous || selector.fragile || selector.strategy === 'css') return false;
+  if (Number.isFinite(selector.matchCount) && selector.matchCount !== 1) return false;
+  return true;
+}
+
+function exportSelector(selector) {
+  if (!selector || confirmedUnique(selector) || selector.strategy === 'css') return selector;
+  if (!selector.uniqueCss) return selector;
+  return {
+    ...selector,
+    strategy: 'css',
+    value: selector.uniqueCss,
+    fragile: true,
+    warning: selector.warning || 'Selector was not unique. Using a structural CSS path. Verify it before relying on this step.',
+  };
+}
+
 function methodLabel(selector) {
   if (!selector) return 'Element';
   if (selector.strategy === 'role' && selector.name) return selector.name;
@@ -198,11 +216,13 @@ function prepareActions(actions) {
       continue;
     }
     const previous = prepared[prepared.length - 1];
-    const repeatedClick = previous
+    const sameRecorderEvent = previous
       && (action.type === 'click' || action.type === 'dblclick')
       && previous.type === action.type
-      && selectorKey(previous.selector) === selectorKey(action.selector);
-    if (repeatedClick) continue;
+      && selectorKey(previous.selector) === selectorKey(action.selector)
+      && Number.isFinite(previous.recordedAt)
+      && previous.recordedAt === action.recordedAt;
+    if (sameRecorderEvent) continue;
     prepared.push(action);
   }
   return prepared;
@@ -252,7 +272,7 @@ function buildPageModel(actions) {
     }
 
     if (!METHOD_PREFIXES[action.type]) continue;
-    const sel = action.selector;
+    const sel = exportSelector(action.selector);
     const key = sel
       ? `${action.type}:${sel.strategy}:${sel.attr || ''}:${sel.value}:${sel.name || ''}`
       : action.type;
