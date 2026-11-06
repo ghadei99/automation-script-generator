@@ -63,10 +63,17 @@ try {
   const recorded = await extensionPage.evaluate(() => chrome.storage.local.get(['session']));
   const steps = recorded.session.steps;
   const urls = steps.filter((step) => step.type === 'navigate').map((step) => step.url);
+  const addStep = steps.find((step) => step.type === 'click' && step.selector && step.selector.value === 'add-cart');
   record(
     'Recording keeps the shop and the product navigation',
     urls.some((url) => url.includes('/shop.html')) && urls.some((url) => url.includes('/product.html?sku=notebook'))
-      && steps.some((step) => step.type === 'click' && step.selector && step.selector.value === 'add-cart'),
+      && addStep
+      && addStep.selector.strategy === 'testid'
+      && addStep.selector.fingerprint
+      && addStep.selector.fingerprint.tag === 'button'
+      && Array.isArray(addStep.selector.candidates)
+      && addStep.selector.candidates.length > 1
+      && !JSON.stringify(addStep).includes('demo123'),
     urls.join(' | '),
   );
 
@@ -74,13 +81,14 @@ try {
   await extensionPage.waitForSelector('.step-title');
   const ui = await extensionPage.evaluate(() => {
     const titles = [...document.querySelectorAll('.step-title')].map((node) => node.textContent);
-    const clicked = [...document.querySelectorAll('.step')].find((node) => node.innerText.includes('Click'));
+    const clicked = [...document.querySelectorAll('.step')].find((node) => node.innerText.includes('add-cart'));
     if (clicked) clicked.click();
     return {
       titles,
       numbers: [...document.querySelectorAll('.step-index')].map((node) => node.textContent),
       icons: [...document.querySelectorAll('.step-icon')].map((node) => node.textContent),
       locator: document.querySelector('.locator') ? document.querySelector('.locator').textContent : '',
+      backups: document.body.innerText.includes('Backup locators'),
     };
   });
   record(
@@ -90,7 +98,10 @@ try {
       && ui.numbers[0] === '01'
       && ui.icons.length === steps.length
       && /Strategy:/.test(ui.locator)
-      && /CSS:/.test(ui.locator),
+      && /CSS:/.test(ui.locator)
+      && /Verification:/.test(ui.locator)
+      && /Reliability:/.test(ui.locator)
+      && ui.backups,
     `${ui.titles.join(' / ')} :: ${ui.locator.split('\n')[0]}`,
   );
 

@@ -124,6 +124,22 @@ function stepTitle(step) {
   }
 }
 
+function reliabilityLabel(tier) {
+  if (tier === 'verified-contract') return 'Verified test contract or semantic locator';
+  if (tier === 'verified-attribute') return 'Verified stable attribute';
+  if (tier === 'verified-scoped') return 'Verified scoped selector';
+  if (tier === 'structural') return 'Structural fallback';
+  return 'Recorded locator';
+}
+
+function locatorStatus(candidate) {
+  if (!candidate) return 'Not verified';
+  if (candidate.tier === 'structural') return 'Fragile fallback';
+  if (candidate.unique === false) return 'Not unique';
+  if (candidate.unique === true) return 'Verified unique';
+  return 'Not rechecked';
+}
+
 function locatorDetail(selector) {
   if (!selector) return 'This step has no element locator.';
   const lines = [
@@ -133,9 +149,20 @@ function locatorDetail(selector) {
   if (selector.name) lines.push(`Name: ${selector.name}`);
   if (selector.attr) lines.push(`Attribute: ${selector.attr}`);
   lines.push(`CSS: ${selector.uniqueCss || selector.value || ''}`);
+  lines.push(`Verification: ${selector.verified || 'recorded'}`);
+  lines.push(`Reliability: ${reliabilityLabel(selector.tier)}${Number.isFinite(selector.rank) ? ` (rank ${selector.rank})` : ''}. ${selector.explanation || ''}`.trim());
+  lines.push(`Status: ${selector.fragile ? 'Fragile fallback' : locatorStatus({ tier: selector.tier, unique: !selector.ambiguous && !selector.fragile })}`);
   if (selector.warning) lines.push(selector.warning);
   if (selector.fragile) lines.push('Structural CSS is a fallback. Prefer a stable locator before relying on this step.');
   return lines.join('\n');
+}
+
+function sameCandidate(selector, candidate) {
+  if (!selector || !candidate) return false;
+  return selector.strategy === candidate.strategy
+    && String(selector.value || '') === String(candidate.value || '')
+    && String(selector.name || '') === String(candidate.name || '')
+    && String(selector.attr || '') === String(candidate.attr || '');
 }
 
 function stepSummary(step) {
@@ -385,6 +412,30 @@ function renderStepEditor(step) {
     })));
   }
   fields.push(labeled('Locator', h('pre', { class: 'locator' }, locatorDetail(step.selector))));
+  if (step.selector && Array.isArray(step.selector.candidates) && step.selector.candidates.length) {
+    const backups = h('div', { class: 'stack' }, h('strong', {}, 'Backup locators'));
+    step.selector.candidates.forEach((candidate) => {
+      const primary = sameCandidate(step.selector, candidate);
+      const label = [
+        primary ? 'Primary' : 'Backup',
+        candidate.strategy,
+        candidate.name ? `${candidate.value} "${candidate.name}"` : candidate.value,
+        locatorStatus(candidate),
+        candidate.verified || 'recorded',
+        candidate.explanation || '',
+      ].filter(Boolean).join(' · ');
+      const row = h('div', { class: 'candidate' }, h('div', {}, label));
+      if (!primary && candidate.unique && globalThis.ASG && ASG.applyCandidate) {
+        row.append(h('button', {
+          type: 'button',
+          onclick: () => updateSelected({ selector: ASG.applyCandidate(step.selector, candidate) }),
+        }, 'Use this locator'));
+      }
+      if (candidate.unique === false) row.append(h('div', {}, 'Not unique. Not applied.'));
+      backups.append(row);
+    });
+    fields.push(backups);
+  }
   if (step.selector) {
     fields.push(labeled('CSS override', h('input', {
       type: 'text', value: step.selector.uniqueCss || '',
@@ -548,10 +599,45 @@ function renderActiveRun() {
     if (result.message) line.append(document.createTextNode(` — ${result.message}`));
     if (result.expected != null) line.append(h('div', {}, `Expected: ${result.expected}`));
     if (result.actual != null) line.append(h('div', {}, `Actual: ${result.actual}`));
+    appendRepairs(line, model.activeRun, result);
     appendScreenshot(line, result);
     box.append(line);
   });
   return box;
+}
+
+function appendRepairs(line, run, result) {
+  if (!result || !Array.isArray(result.repairs) || !result.repairs.length) return;
+  const box = h('div', { class: 'stack' }, h('strong', {}, 'Locator alternatives. This step stayed failed.'));
+  result.repairs.forEach((repair) => {
+    const status = repair.status === 'safe' ? 'Safe alternative' : 'Not safe';
+    const row = h('div', { class: 'candidate' }, h('div', {}, `${status} · ${repair.strategy} · ${repair.value || ''} · ${repair.reason || ''}`));
+    if (repair.status === 'safe') {
+      row.append(h('button', { type: 'button', onclick: () => approveRepair(run, result, repair) }, 'Approve replacement'));
+    } else {
+      row.append(h('div', {}, 'Not approved. This will not be clicked.'));
+    }
+    box.append(row);
+  });
+  line.append(box);
+}
+
+async function approveRepair(run, result, repair) {
+  if (!run || !repair || repair.status !== 'safe' || !globalThis.ASG || !ASG.applyCandidate) return;
+  const apply = (step) => (step && step.selector ? { ...step, selector: ASG.applyCandidate(step.selector, repair) } : step);
+  if (run.testId === 'draft') {
+    if (!model.session) return;
+    await mutateSteps((steps) => { steps[result.index] = apply(steps[result.index]); });
+  } else {
+    const test = model.tests.find((item) => item.id === run.testId);
+    if (!test) return;
+    const steps = (test.steps || []).map((step, index) => (index === result.index ? apply(step) : step));
+    await send({ type: 'tests:update', id: run.testId, steps });
+    await reload();
+    render();
+  }
+  errorText = 'Locator updated. The failed run was not changed. Run the test again to retry.';
+  updateChrome();
 }
 
 async function runChosen() {
@@ -609,6 +695,7 @@ function runDetail(run) {
     if (result.message) line.append(h('div', {}, result.message));
     if (result.expected != null) line.append(h('div', {}, `Expected: ${result.expected}`));
     if (result.actual != null) line.append(h('div', {}, `Actual: ${result.actual}`));
+    appendRepairs(line, run, result);
     appendScreenshot(line, result);
     box.append(line);
   });

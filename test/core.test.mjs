@@ -413,6 +413,127 @@ test('generated names stay short, repeated clicks drop, and validations remain',
   assert.equal([...page.matchAll(/getByTestId\("save"\)/g)].length, 1);
 });
 
+test('smart locators rank verified candidates and leave failures failed', async () => {
+  const dom = new JSDOM(`<!doctype html><body>
+    <main>
+      <label for="user">Username</label>
+      <input id="user" data-testid="username" name="username" value="demo123">
+      <button data-testid="add-cart">Add to cart</button>
+      <button data-testid="add-cart">Add to cart</button>
+      <section data-testid="notebook"><button type="button">Add to cart</button></section>
+      <section data-testid="pen"><button type="button">Add to cart</button></section>
+      <button id="ember4821">Save draft</button>
+      <div><span>x</span></div>
+      <button data-testid="only-save">Save</button>
+      <button>Save</button>
+    </main>
+  </body>`);
+  const { document } = dom.window;
+  const user = selectors.describeElement(document.querySelector('#user'), document);
+  assert.equal(user.strategy, 'testid');
+  assert.equal(user.ambiguous, false);
+  assert.equal(selectors.queryAll(document, user)[0], document.querySelector('#user'));
+  assert.equal(JSON.stringify(user).includes('demo123'), false);
+  assert.equal(user.fingerprint.tag, 'input');
+  assert.ok(user.candidates.some((candidate) => candidate.strategy === 'role' && candidate.verified === 'accessibility'));
+
+  const duplicate = selectors.describeElement(document.querySelectorAll('[data-testid="add-cart"]')[0], document);
+  const duplicateTestid = duplicate.candidates.find((candidate) => candidate.strategy === 'testid');
+  assert.equal(duplicate.strategy === 'testid', false);
+  assert.equal(duplicateTestid.unique, false);
+  assert.ok(duplicateTestid.matchCount > 1);
+
+  const notebook = document.querySelector('[data-testid="notebook"] button');
+  const pen = document.querySelector('[data-testid="pen"] button');
+  const scoped = selectors.describeElement(notebook, document);
+  assert.equal(scoped.strategy, 'css');
+  assert.equal(scoped.tier, 'verified-scoped');
+  assert.equal(scoped.fragile, false);
+  assert.equal(selectors.queryAll(document, scoped)[0], notebook);
+  assert.notEqual(selectors.queryAll(document, scoped)[0], pen);
+  const roleBackup = scoped.candidates.find((candidate) => candidate.strategy === 'role');
+  assert.equal(roleBackup.unique, false);
+
+  const dynamic = selectors.describeElement(document.querySelector('#ember4821'), document);
+  assert.equal(dynamic.strategy, 'role');
+  assert.equal(dynamic.candidates.some((candidate) => candidate.strategy === 'id'), false);
+  assert.match(dynamic.explanation, /not a Playwright/);
+
+  const bare = selectors.describeElement(document.querySelector('span'), document);
+  assert.equal(bare.strategy, 'css');
+  assert.equal(bare.tier, 'structural');
+  assert.match(bare.warning, /structural CSS/);
+
+  const changed = selectors.describeElement(document.querySelector('[data-testid="only-save"]'), document);
+  changed.fingerprint = { tag: 'button', role: 'button', name: 'Save' };
+  document.querySelector('[data-testid="only-save"]').removeAttribute('data-testid');
+  const report = selectors.suggestRepairs(changed, document);
+  assert.equal(report.primaryCount, 0);
+  assert.equal(changed.strategy, 'testid');
+  const safe = report.suggestions.filter((item) => item.status === 'safe');
+  const unsafe = report.suggestions.filter((item) => item.status === 'unsafe');
+  assert.ok(safe.length >= 1);
+  assert.ok(unsafe.some((item) => item.strategy === 'role' && /will not be clicked/.test(item.reason)));
+  const repaired = selectors.applyCandidate(changed, safe[0]);
+  assert.equal(selectors.queryAll(document, repaired).length, 1);
+  assert.equal(selectors.queryAll(document, changed).length, 0);
+  assert.equal(selectors.applyCandidate(changed, unsafe[0]), changed);
+
+  const mismatch = selectors.suggestRepairs({
+    strategy: 'testid',
+    value: 'missing',
+    fingerprint: { tag: 'button', role: 'button', name: 'Save' },
+    candidates: [
+      { strategy: 'testid', value: 'missing' },
+      { strategy: 'label', value: 'Username', tier: 'verified-contract', rank: 1, verified: 'dom' },
+    ],
+  }, document);
+  assert.equal(mismatch.suggestions[0].status, 'unsafe');
+  assert.match(mismatch.suggestions[0].reason, /Tag changed/);
+
+  const legacy = schema.sanitizeSelector({ strategy: 'testid', value: 'username', matchCount: 1 });
+  assert.equal(legacy.strategy, 'testid');
+  assert.equal(legacy.value, 'username');
+  assert.equal(legacy.candidates[0].verified, 'recorded');
+  assert.match(legacy.candidates[0].explanation, /before backup/);
+
+  const ids = sequentialIds();
+  let session = reducer.createSession({ tabId: 1, origin: 'https://shop.example', url: 'https://shop.example/', networkCapture: false }, ids);
+  const add = { strategy: 'testid', value: 'add-cart', matchCount: 1 };
+  session = reducer.reduceEvent(session, { kind: 'ui', step: { type: 'click', selector: add, recordedAt: 10 } }, ids);
+  session = reducer.reduceEvent(session, { kind: 'ui', step: { type: 'click', selector: add, recordedAt: 10 } }, ids);
+  session = reducer.reduceEvent(session, { kind: 'ui', step: { type: 'click', selector: add, recordedAt: 90 } }, ids);
+  assert.equal(session.steps.filter((step) => step.type === 'click').length, 2);
+
+  const generated = code.renderPlaywright([
+    { type: 'click', selector: scoped },
+    { type: 'input', selector: { strategy: 'testid', value: 'password' }, secret: true, paramName: 'password' },
+  ]);
+  const selenium = code.renderSelenium([{ type: 'click', selector: scoped }]);
+  const cypress = code.renderCypress([{ type: 'click', selector: scoped }]);
+  assert.match(generated, /locator\("\[data-testid=\\"notebook\\"\] button"\)/);
+  assert.equal(generated.includes('nth-of-type'), false);
+  assert.match(generated, /TEST_PASSWORD/);
+  assert.match(selenium, /By\.cssSelector\("\[data-testid=\\"notebook\\"\] button"\)/);
+  assert.match(cypress, /\[data-testid=\\"notebook\\"\] button/);
+  assert.equal(generated.includes('%'), false);
+
+  const outcome = await runner.executeSequence([
+    { id: 'a', type: 'click' },
+    { id: 'b', type: 'assertText' },
+  ], {
+    async execute() {
+      throw Object.assign(new Error('Element not found before timeout'), {
+        repairs: [{ status: 'safe', strategy: 'role', value: 'button', reason: 'Unique match.' }],
+      });
+    },
+  });
+  assert.equal(outcome.status, 'failed');
+  assert.equal(outcome.results[0].status, 'failed');
+  assert.equal(outcome.results[0].repairs[0].status, 'safe');
+  assert.equal(outcome.results[1].status, 'skipped');
+});
+
 function sequentialIds() {
   let n = 0;
   return { id: () => `id${n += 1}`, now: () => 1_000 + n };

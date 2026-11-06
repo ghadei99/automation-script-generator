@@ -166,16 +166,21 @@
 
   function resolveElements(selector) {
     if (!selector) return [];
-    if (selector.ambiguous && selector.uniqueCss) {
+    const candidates = Array.isArray(selector.candidates) ? selector.candidates : [];
+    const legacyAmbiguous = selector.ambiguous
+      && selector.uniqueCss
+      && selector.strategy !== 'css'
+      && (candidates.length === 0 || (candidates.length === 1 && candidates[0].verified === 'recorded'));
+    if (legacyAmbiguous) {
       return ASG.queryAll(document, { strategy: 'css', value: selector.uniqueCss, uniqueCss: selector.uniqueCss });
     }
-    const primary = ASG.queryAll(document, selector);
-    if (primary.length === 1) return primary;
-    if (primary.length > 1) return primary;
-    if (selector.uniqueCss && selector.strategy !== 'css') {
-      return ASG.queryAll(document, { strategy: 'css', value: selector.uniqueCss, uniqueCss: selector.uniqueCss });
-    }
-    return primary;
+    return ASG.queryAll(document, selector);
+  }
+
+  function repairSuggestions(selector) {
+    if (!selector || !ASG.suggestRepairs) return undefined;
+    const report = ASG.suggestRepairs(selector, document);
+    return report && report.suggestions && report.suggestions.length ? report.suggestions : undefined;
   }
 
   function waitForOne(selector, timeoutMs) {
@@ -197,6 +202,7 @@
           reject(Object.assign(new Error(`Selector matched ${matches.length} elements`), {
             expected: '1 element',
             actual: `${matches.length} elements`,
+            repairs: repairSuggestions(selector),
           }));
           return;
         }
@@ -208,6 +214,7 @@
           reject(Object.assign(new Error('Element not found before timeout'), {
             expected: selectorLabel(selector),
             actual: 'not found',
+            repairs: repairSuggestions(selector),
           }));
           return;
         }
@@ -347,6 +354,7 @@
             message: error.message || 'Step failed',
             expected: error.expected,
             actual: error.actual,
+            repairs: error.repairs,
           });
         });
         return true;
