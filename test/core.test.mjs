@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
@@ -200,8 +201,10 @@ test('mock AI plans are schema-valid suggestions and reject executable fields', 
   assert.equal(plan.cases.length, 2);
   assert.equal(JSON.stringify(plan).includes('demo123'), false);
   assert.equal(JSON.stringify(plan).includes('data-testid'), false);
-  assert.equal(plan.cases[0].steps.some((step) => step.secret && step.paramName === 'password'), true);
-  assert.equal(plan.cases[0].steps.some((step) => step.selector), false);
+  const validCase = plan.cases.find((item) => item.steps.some((step) => step.paramName === 'password'));
+  assert.equal(plan.cases[0].name.includes('Invalid'), true);
+  assert.ok(validCase);
+  assert.equal(validCase.steps.some((step) => step.selector), false);
   assert.throws(() => schema.validatePlan({ ...plan, script: 'alert(1)' }), /executable/i);
   assert.throws(() => schema.validatePlan({
     title: 'bad',
@@ -246,6 +249,46 @@ test('mock AI uses selectors only when the open page has that element', () => {
   assert.match(playwright, /TEST_WRONGPASSWORD/);
   assert.equal(playwright.includes('not-on-page'), false);
   assert.equal(playwright.includes('demo123'), false);
+});
+
+test('the login prompt proposes invalid then success, and edits do not swallow locators', () => {
+  const evidence = {
+    pageUrl: 'http://127.0.0.1:4173/',
+    items: [
+      { tag: 'input', type: 'text', testid: 'username', id: 'username', name: 'username', label: 'Username', text: '', role: '' },
+      { tag: 'input', type: 'password', testid: 'password', id: 'password', name: 'password', label: 'Password', text: '', role: '' },
+      { tag: 'button', type: 'submit', testid: 'submit', id: '', name: '', label: '', text: 'Sign in', role: '' },
+      { tag: 'p', type: '', testid: 'error', id: 'error', name: '', label: '', text: '', role: '' },
+    ],
+  };
+  const plan = ai.mockPlan('Test the login form, verify invalid credentials show an error, then test a successful login.', { evidence });
+  assert.equal(plan.cases.length, 2);
+  assert.match(plan.cases[0].name, /Invalid/);
+  assert.match(plan.cases[1].name, /Valid/);
+  assert.equal(plan.cases[1].steps.find((step) => step.type === 'assertUrl').expected, '');
+  assert.equal(JSON.stringify(plan).includes('/app'), false);
+  const errorStep = plan.cases[0].steps.find((step) => step.type === 'assertText');
+  ai.applyStepEdit(errorStep, 'Assert text equals "Invalid credentials" on data-testid=error');
+  assert.equal(errorStep.expected, 'Invalid credentials');
+  assert.equal(errorStep.selector.value, 'error');
+  const userStep = plan.cases[1].steps.find((step) => step.type === 'input' && !step.secret);
+  ai.applyStepEdit(userStep, 'Enter "demo" into data-testid=username');
+  assert.equal(userStep.value, 'demo');
+  assert.equal(userStep.selector.value, 'username');
+  const urlStep = plan.cases[1].steps.find((step) => step.type === 'assertUrl');
+  ai.applyStepEdit(urlStep, 'Assert URL equals "http://127.0.0.1:4173/app.html"');
+  assert.equal(urlStep.expected, 'http://127.0.0.1:4173/app.html');
+  const exported = code.renderPlaywright(plan.cases[1].steps);
+  assert.match(exported, /getByTestId\("username"\)/);
+  assert.match(exported, /TEST_PASSWORD/);
+  assert.equal(exported.includes('demo123'), false);
+});
+
+test('the live proxy exits unless its own credentials are set', () => {
+  const result = spawnSync(process.execPath, ['server/ai-proxy.mjs'], { encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.match(`${result.stderr}`, /PROXY_AUTH_TOKEN/);
+  assert.match(`${result.stderr}`, /AI_API_KEY/);
 });
 
 test('all four generators keep the page-object flow and parameterize secrets', () => {

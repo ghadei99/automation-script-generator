@@ -108,3 +108,31 @@ The mock plan was labeled proposed. Its selectors were `data-testid=username`, `
 `node test/acceptance.mjs` after these changes: 16 passed, 0 failed. The earlier baseline was not replaced by a weaker check.
 
 Live AI was not called. No provider key is configured. Mock mode is the feature that ran. Screenshot: `test-results/ai-failed-run.png`.
+
+## Login plan executed in Chrome, 2026-11-06
+
+Branch started from merged `master` at `6bb3e23`.
+
+Commands:
+
+```bash
+npm test
+node test/ai-login.mjs
+node test/acceptance.mjs
+```
+
+`npm test`: 16 passed, 0 failed. This includes the plan edit checks and `server/ai-proxy.mjs` exiting when `PROXY_AUTH_TOKEN` and `AI_API_KEY` are unset.
+
+`node test/ai-login.mjs`: 5 passed, 0 failed. Chrome launched the extension against the local demo. The prompt was "Test the login form, verify invalid credentials show an error, then test a successful login."
+
+| Check | Result | Evidence |
+|---|---|---|
+| Mock plan | Pass | Invalid case, then success case. Selectors were `data-testid` username, password, submit, and error from the open page. The success URL was empty. `/app` was not invented |
+| Correct assertions | Pass | `navigate, input, input, click, assertText, assertUrl` all passed after the expected error was set to `Invalid credentials` |
+| Incorrect assertion | Pass as a real failure | Expected `Not the real error`. Actual `Invalid credentials`. Later steps skipped. Evidence: `Either the '<all_urls>' or 'activeTab' permission is required.` No image was stored |
+| Successful login | Pass | Same step list passed after the username was set to `demo` and the expected URL was set to the demo app. The page text was `Welcome, Demo` |
+| Playwright export | Pass | The approved success spec imports `@playwright/test`, uses `getByTestId("username")` and `TEST_PASSWORD`, includes the approved app URL, and does not contain `demo123`. Extension storage also did not contain `demo123` or `not-the-password` |
+
+`node test/acceptance.mjs`: 16 passed, 0 failed.
+
+Live mode was not called. The proxy was not started. The Playwright test runner was not used to execute the exported file. Screenshot: `test-results/ai-login-failed.png`.
