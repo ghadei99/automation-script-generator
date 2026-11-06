@@ -38,6 +38,13 @@ async function editInCard(page, cardText, current, next) {
   if (!edited) throw new Error(`Could not edit "${current}" in "${cardText}"`);
 }
 
+async function waitForSteps(page, text) {
+  await page.waitForFunction((expected) => {
+    const heading = document.querySelector('h2');
+    return !!heading && heading.textContent === 'Test steps' && document.body.innerText.includes(expected);
+  }, { timeout: 8000 }, text);
+}
+
 async function approveCard(page, cardText) {
   const approved = await page.evaluate((cardText) => {
     const card = [...document.querySelectorAll('.card')].find((node) => node.innerText.includes(cardText));
@@ -141,7 +148,7 @@ try {
 
   await editInCard(ui, 'Invalid login', 'Assert text equals ""', 'Assert text equals "Invalid credentials" on data-testid=error');
   await approveCard(ui, 'Invalid login');
-  await ui.waitForFunction(() => document.body.innerText.includes('Invalid login shows an error'), { timeout: 8000 });
+  await waitForSteps(ui, 'Invalid credentials');
   await runWithSecret(ui, 'wrongPassword', 'not-the-password');
   const passedStore = await waitForRun(ui, 'passed');
   const passedRun = passedStore.runs[0];
@@ -154,6 +161,7 @@ try {
   await clickButton(ui, 'AI assistant');
   await editInCard(ui, 'Invalid login', 'Invalid credentials', 'Assert text equals "Not the real error" on data-testid=error');
   await approveCard(ui, 'Invalid login');
+  await waitForSteps(ui, 'Not the real error');
   await runWithSecret(ui, 'wrongPassword', 'not-the-password');
   const failedStore = await waitForRun(ui, 'failed');
   const failedRun = failedStore.runs[0];
@@ -179,6 +187,7 @@ try {
   await editInCard(ui, 'Valid login', 'Enter "demo-user"', 'Enter "demo" into data-testid=username');
   await editInCard(ui, 'Valid login', 'Assert URL equals ""', `Assert URL equals "${appUrl}"`);
   await approveCard(ui, 'Valid login');
+  await waitForSteps(ui, appUrl);
   await runWithSecret(ui, 'password', 'demo123');
   const successStore = await waitForRun(ui, 'passed');
   const successRun = successStore.runs[0];
