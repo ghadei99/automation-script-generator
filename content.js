@@ -300,12 +300,19 @@
       return { ok: true, actual: 'visible' };
     }
     if (step.type === 'assertText') {
-      const el = await waitForOne(step.selector, timeoutMs);
-      const actual = ASG.elementText(el);
       const expected = step.expected || '';
-      const ok = step.match === 'partial' ? actual.includes(expected) : actual === expected;
-      if (!ok) return { ok: false, message: 'Text did not match', expected, actual };
-      return { ok: true, actual };
+      const el = await waitForOne(step.selector, timeoutMs);
+      let actual = ASG.elementText(el);
+      if (!expected) return { ok: false, message: 'Expected text was not set', expected: '', actual };
+      const start = Date.now();
+      while (Date.now() - start <= timeoutMs) {
+        if (globalThis.__asgStop) return { ok: false, message: 'Execution stopped', actual: 'stopped' };
+        actual = ASG.elementText(el);
+        const ok = step.match === 'partial' ? actual.includes(expected) : actual === expected;
+        if (ok) return { ok: true, actual };
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return { ok: false, message: 'Text did not match', expected, actual };
     }
     return { ok: false, message: `Unsupported step type "${step.type || ''}"`, actual: step.type || 'missing' };
   }

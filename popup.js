@@ -25,6 +25,10 @@ function h(tag, attrs) {
   const children = Array.from(arguments).slice(2);
   Object.entries(attrs || {}).forEach(([key, value]) => {
     if (value == null || value === false) return;
+    if (key === 'disabled') {
+      node.disabled = !!value;
+      return;
+    }
     if (key === 'class') node.className = value;
     else if (key.startsWith('on') && typeof value === 'function') node.addEventListener(key.slice(2).toLowerCase(), value);
     else if (key === 'value') node.value = value;
@@ -75,7 +79,7 @@ function stepSummary(step) {
     case 'navigate': return `Navigate ${step.url || ''}`;
     case 'click': return `Click ${selectorText(step.selector)}`;
     case 'dblclick': return `Double-click ${selectorText(step.selector)}`;
-    case 'input': return step.secret ? `Enter secret {{${step.paramName}}}` : `Enter "${step.value || ''}" into ${selectorText(step.selector)}`;
+    case 'input': return step.secret ? `Enter secret {{${step.paramName}}} into ${selectorText(step.selector)}` : `Enter "${step.value || ''}" into ${selectorText(step.selector)}`;
     case 'select': return `Choose "${step.value || ''}" in ${selectorText(step.selector)}`;
     case 'checkbox': return `Set ${selectorText(step.selector)} ${step.checked ? 'checked' : 'unchecked'}`;
     case 'radio': return `Select radio ${selectorText(step.selector)}`;
@@ -83,7 +87,7 @@ function stepSummary(step) {
     case 'wait': return `Wait for ${selectorText(step.selector)}`;
     case 'assertVisible': return `Assert visible ${selectorText(step.selector)}`;
     case 'assertExists': return `Assert exists ${selectorText(step.selector)}`;
-    case 'assertText': return `Assert text ${step.match === 'partial' ? 'contains' : 'equals'} "${step.expected || ''}"`;
+    case 'assertText': return `Assert text ${step.match === 'partial' ? 'contains' : 'equals'} "${step.expected || ''}" on ${selectorText(step.selector)}`;
     case 'assertUrl': return `Assert URL ${step.match === 'partial' ? 'contains' : 'equals'} "${step.expected || step.url || ''}"`;
     default: return step.type;
   }
@@ -110,11 +114,20 @@ async function reload() {
 }
 
 async function refreshTarget() {
+  let next = null;
   try {
     const win = await chrome.windows.getLastFocused({ populate: true, windowTypes: ['normal'] });
-    targetTab = ((win && win.tabs) || []).find((tab) => tab.active) || null;
+    next = ((win && win.tabs) || []).find((tab) => tab.active) || null;
   } catch (error) {
-    targetTab = null;
+    next = null;
+  }
+  const previousId = targetTab && targetTab.id;
+  const previousUrl = targetTab && targetTab.url;
+  targetTab = next;
+  const changed = (next && next.id) !== previousId || (next && next.url) !== previousUrl;
+  if (changed && view === 'recorder' && !dirty) {
+    render();
+    return;
   }
   const label = document.getElementById('targetLabel');
   if (label && !dirty) {
@@ -133,7 +146,7 @@ function render() {
 function renderRecorder() {
   const session = model.session;
   const reason = targetTab && targetTab.url ? ASG.unsupportedReason(targetTab.url) : 'Open an http or https page in a normal browser window.';
-  const blocked = reason && reason !== 'ignore';
+  const blocked = !!(reason && reason !== 'ignore');
   const box = h('section', {},
     h('h2', {}, 'Recorder'),
     h('p', { class: 'muted' }, 'Recording starts only when you press Start, and only in the browser tab shown above.'),
@@ -601,8 +614,12 @@ function renderAi() {
         value: stepSummary(step),
         onchange: (event) => editAiStep(caseIndex, stepIndex, event.target.value),
       })));
+      if (step.warning) box.append(h('div', { class: 'muted' }, step.warning));
+      if (!step.selector && step.type !== 'navigate' && step.type !== 'assertUrl') {
+        box.append(h('div', { class: 'muted' }, 'No selector from the open page.'));
+      }
     });
-    box.append(h('button', { onclick: () => saveAiCase(caseIndex) }, 'Save as draft test'));
+    box.append(h('button', { class: 'primary', onclick: () => saveAiCase(caseIndex) }, 'Approve and save'));
     wrap.append(box);
   });
   return wrap;
@@ -613,7 +630,7 @@ function editAiStep(caseIndex, stepIndex, summary) {
   if (step.type === 'navigate' || step.type === 'assertUrl') step.expected = summary;
   if (step.type === 'navigate') step.url = summary.replace(/^Navigate\s+/, '') || step.url;
   if (step.type === 'assertText') {
-    const match = summary.match(/"([^"]*)"\s*$/);
+    const match = summary.match(/"([^"]*)"/);
     if (match) step.expected = match[1];
   }
   if (step.type === 'input' && !step.secret) {
@@ -626,8 +643,14 @@ async function generatePlan() {
   errorText = '';
   try {
     const prompt = document.getElementById('aiPrompt').value;
-    const origin = (model.session && model.session.origin) || (targetTab && targetTab.url ? ASG.originOf(targetTab.url) : '');
-    const response = await send({ type: 'ai:plan', prompt, origin, mode: model.settings.aiMode });
+    const origin = (targetTab && targetTab.url) || (model.session && model.session.origin) || '';
+    const response = await send({
+      type: 'ai:plan',
+      prompt,
+      origin,
+      tabId: targetTab ? targetTab.id : null,
+      mode: model.settings.aiMode,
+    });
     aiPlan = response.plan;
     render();
   } catch (error) {
