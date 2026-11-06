@@ -59,6 +59,36 @@ test('the proxy checks auth, redacts evidence, validates the plan, and rate limi
     seen.push({ authorization: request.headers.authorization || '', body: raw });
     const incoming = JSON.parse(raw);
     const prompt = incoming.messages[1].content;
+    if (String(prompt).includes('not-json')) {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ choices: [{ message: { content: 'not-json' } }] }));
+      return;
+    }
+    if (String(prompt).includes('usage-plan')) {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({
+        model: 'test-model',
+        usage: { prompt_tokens: 11, completion_tokens: 7, total_tokens: 18, cost: 0.01 },
+        choices: [{ message: { content: JSON.stringify({
+          title: 'Example',
+          summary: 'Navigate',
+          cases: [{ name: 'Open', steps: [{ type: 'navigate', url: 'https://example.com' }] }],
+        }) } }],
+      }));
+      return;
+    }
+    if (String(prompt).includes('password-value')) {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      const leaked = {
+        title: 'Login',
+        cases: [{
+          name: 'Bad secret',
+          steps: [{ type: 'input', id: 'password', value: 'demo123', selector: { strategy: 'testid', value: 'password' } }],
+        }],
+      };
+      response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(leaked) } }] }));
+      return;
+    }
     const plan = String(prompt).includes('bad-plan')
       ? {
         title: 'Bad',
@@ -130,8 +160,22 @@ test('the proxy checks auth, redacts evidence, validates the plan, and rate limi
     assert.match(rejected.body.error, /executable field/);
     assert.equal(rejected.text.includes('alert(1)'), false);
     assert.equal(rejected.text.includes(providerKey), false);
+    const malformed = await post({ prompt: 'not-json' });
+    assert.equal(malformed.status, 502);
+    assert.match(malformed.body.error, /JSON plan/);
+    const usage = await post({ prompt: 'usage-plan' });
+    assert.equal(usage.status, 200);
+    assert.equal(usage.body.usage.promptTokens, 11);
+    assert.equal(usage.body.usage.completionTokens, 7);
+    assert.equal(usage.body.usage.totalTokens, 18);
+    assert.equal(usage.body.usage.cost, 0.01);
+    assert.equal(usage.body.usage.model, 'test-model');
+    const secret = await post({ prompt: 'password-value' });
+    assert.equal(secret.status, 200);
+    assert.equal(secret.text.includes('demo123'), false);
+    assert.equal(secret.body.cases[0].steps[0].secret, true);
 
-    let used = 4;
+    let used = 7;
     let limited = false;
     for (let index = 0; index < 10; index += 1) {
       const result = await post({ prompt: 'again' });

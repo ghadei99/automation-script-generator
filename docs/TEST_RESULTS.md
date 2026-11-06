@@ -249,3 +249,29 @@ Recording still makes no AI call. Each element stores the best verified locator,
 `node test/shop.mjs`: 5 passed, 0 failed. The notebook Add to cart step kept `data-testid=add-cart`, a button fingerprint, and backup candidates. Replay passed and the page showed `Notebook is in the cart`. The official Playwright runner passed the export.
 
 `node test/persistence.mjs`: product save, Chrome restart, and reopened steps passed. The extensions Reload check is still the debug-session limitation.
+
+## Live AI planning, 2026-11-06
+
+Branch `feature/live-ai-beta`, from `origin/master` at `cd406d0`.
+
+Live planning sends a compact summary: heading, at most 24 interactive elements, verified locators, form ids, and at most four visible messages. It does not send field values, cookies, or the DOM. Password inputs stay secret parameters. `javascript:` URLs are removed. An approved live plan is reused for the same prompt and summary without another provider call. Mock mode still builds the plan locally.
+
+The real provider was not called. `PROXY_AUTH_TOKEN` and `AI_API_KEY` are unset, so `test/live-ai.test.mjs` is UNVERIFIED, not passed. A stub provider reported `promptTokens: 11`, `completionTokens: 7`, `totalTokens: 18`, and `cost: 0.01`. No live token count was observed. Setup is in `docs/AI_POLICY.md`.
+
+`npm test`: 21 passed, 0 failed, 1 skipped.
+
+`node test/acceptance.mjs`: 16/16 passed.
+
+`node test/ai-login.mjs`: 5/5 passed.
+
+`node test/screenshot.mjs`: 5 passed, 0 failed. No image was invented.
+
+`node test/playwright-export.mjs`: the success spec passed. The deliberate failure expected `http://127.0.0.1:56613/not-the-app` and received `http://127.0.0.1:56613/app.html`. The password was absent.
+
+`node test/ai-flow.mjs`: 4/4 passed.
+
+`node test/shop.mjs`: 5 passed, 0 failed. Replay reached `Notebook is in the cart`.
+
+`node test/persistence.mjs`: product save, Chrome restart, and reopened steps passed. The extensions Reload check is still the debug-session limitation.
+
+Chrome suites were run one after another.

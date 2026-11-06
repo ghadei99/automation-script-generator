@@ -712,6 +712,8 @@ async function handleMessage(message, sender) {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       proposed: body.source === 'ai',
+      planner: body.planner === 'live' ? 'live' : 'mock',
+      planKey: typeof body.planKey === 'string' ? body.planKey.slice(0, 40) : '',
       steps: ASG.sanitizeSteps(body.steps || []),
       apiCalls: [],
     };
@@ -813,14 +815,23 @@ async function handleMessage(message, sender) {
       pageUrl: (evidence && evidence.pageUrl) || message.origin || '',
       evidence,
     };
+    const planKey = ASG.planCacheKey(message.prompt, evidence);
     if (mode !== 'live') {
-      return { ok: true, mode: 'mock', plan: ASG.mockPlan(message.prompt, context) };
+      return { ok: true, mode: 'mock', planKey, plan: ASG.mockPlan(message.prompt, context) };
     }
+    const reused = await reusedLivePlan(message.prompt, planKey);
+    if (reused) return { ok: true, mode: 'live', planKey, reused: true, plan: reused };
     if (!settings.aiProxyUrl) {
       return { ok: false, message: 'No AI proxy is configured. Use mock mode, or save a proxy URL in Settings.' };
     }
-    const plan = await requestLivePlan(message.prompt, context.pageUrl, evidence, settings);
-    return { ok: true, mode: 'live', plan: ASG.groundPlan(plan, evidence) };
+    const live = await requestLivePlan(message.prompt, context.pageUrl, evidence, settings);
+    return {
+      ok: true,
+      mode: 'live',
+      planKey,
+      usage: live.usage || null,
+      plan: ASG.groundPlan(live.plan, evidence),
+    };
   }
 
   return { ok: false, message: 'Unknown message' };
@@ -844,27 +855,36 @@ async function pageEvidence(tabId) {
   if (!tab.url || (reason && reason !== 'ignore')) return null;
   if (!(await hasOriginPermission(tab.url))) return null;
   try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['lib/selectors.js', 'lib/ai.js'],
+    });
     const [injected] = await chrome.scripting.executeScript({
       target: { tabId },
-      func: ASG.collectPageEvidence,
+      func: () => {
+        const api = globalThis.ASG;
+        return api && api.collectPageEvidence ? api.collectPageEvidence() : null;
+      },
     });
     const result = injected && injected.result;
     if (!result || !Array.isArray(result.items)) return null;
-    return {
-      pageUrl: String(result.pageUrl || tab.url).slice(0, 2000),
-      title: String(result.title || '').slice(0, 120),
-      items: result.items.slice(0, 60).map((item) => ({
-        tag: String(item.tag || '').slice(0, 40),
-        type: String(item.type || '').slice(0, 40),
-        testid: String(item.testid || '').slice(0, 80),
-        id: String(item.id || '').slice(0, 80),
-        name: String(item.name || '').slice(0, 80),
-        role: String(item.role || '').slice(0, 40),
-        label: String(item.label || '').slice(0, 80),
-        text: String(item.text || '').slice(0, 80),
-        hidden: !!item.hidden,
-      })),
-    };
+    const summary = ASG.compactSummary({ ...result, pageUrl: result.pageUrl || tab.url });
+    return summary;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function reusedLivePlan(prompt, planKey) {
+  const matches = (await getTests()).filter((test) => test && test.planner === 'live' && test.planKey === planKey && test.source === 'ai');
+  if (!matches.length) return null;
+  try {
+    return ASG.validatePlan({
+      title: String(prompt || 'Approved plan').slice(0, 80),
+      summary: 'Reused the approved plan for this page and request. No provider call was made.',
+      source: 'live',
+      cases: matches.slice(0, 8).map((test) => ({ name: test.name, steps: test.steps || [] })),
+    });
   } catch (error) {
     return null;
   }
@@ -883,12 +903,24 @@ async function requestLivePlan(prompt, origin, evidence, settings) {
       body: JSON.stringify({
         prompt: String(prompt || '').slice(0, 2000),
         targetOrigin: origin || '',
-        pageEvidence: evidence && evidence.items ? evidence.items : [],
+        summary: evidence ? {
+          purpose: evidence.purpose || '',
+          items: evidence.items || [],
+          messages: evidence.messages || [],
+        } : { purpose: '', items: [], messages: [] },
       }),
     });
-    if (!response.ok) throw new Error(`AI proxy returned HTTP ${response.status}`);
-    const body = await response.json();
-    return ASG.validatePlan({ ...(body.plan || body), source: 'live' });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail = body && typeof body.error === 'string' ? body.error.slice(0, 200) : '';
+      if (response.status === 401) throw new Error('The proxy rejected the access token. Check the proxy token in Settings.');
+      if (response.status === 429) throw new Error('The proxy rate limit was reached. Wait a minute and try again.');
+      throw new Error(detail || `AI proxy returned HTTP ${response.status}`);
+    }
+    return {
+      plan: ASG.validatePlan(ASG.scrubPlan({ ...(body.plan || body), source: 'live' })),
+      usage: body.usage || null,
+    };
   } catch (error) {
     if (error.name === 'AbortError') throw new Error('AI proxy timed out after 20 seconds.');
     throw new Error(error.message || 'AI proxy request failed.');
