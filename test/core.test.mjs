@@ -199,12 +199,53 @@ test('mock AI plans are schema-valid suggestions and reject executable fields', 
   assert.equal(plan.proposed, true);
   assert.equal(plan.cases.length, 2);
   assert.equal(JSON.stringify(plan).includes('demo123'), false);
+  assert.equal(JSON.stringify(plan).includes('data-testid'), false);
   assert.equal(plan.cases[0].steps.some((step) => step.secret && step.paramName === 'password'), true);
+  assert.equal(plan.cases[0].steps.some((step) => step.selector), false);
   assert.throws(() => schema.validatePlan({ ...plan, script: 'alert(1)' }), /executable/i);
   assert.throws(() => schema.validatePlan({
     title: 'bad',
     cases: [{ name: 'bad', steps: [{ type: 'eval', id: 'x' }] }],
   }), /unsupported type/i);
+});
+
+test('mock AI uses selectors only when the open page has that element', () => {
+  const evidence = {
+    pageUrl: 'http://127.0.0.1:4173/',
+    items: [
+      { tag: 'input', type: 'text', testid: 'username', id: 'username', name: 'username', label: 'Username', text: '', role: '' },
+      { tag: 'input', type: 'password', testid: 'password', id: 'password', name: 'password', label: 'Password', text: '', role: '' },
+      { tag: 'button', type: 'submit', testid: 'submit', id: '', name: '', label: '', text: 'Sign in', role: '' },
+      { tag: 'p', type: '', testid: 'error', id: 'error', name: '', label: '', text: '', role: '' },
+    ],
+  };
+  const plan = ai.mockPlan('Test the login page with invalid credentials, verify the error message, and check navigation.', { evidence });
+  assert.equal(plan.cases.length, 1);
+  const steps = plan.cases[0].steps;
+  const used = steps.map((step) => step.selector && step.selector.value).filter(Boolean).sort();
+  assert.deepEqual(used, ['error', 'password', 'submit', 'username']);
+  assert.equal(steps.some((step) => step.type === 'assertUrl' && step.expected === evidence.pageUrl), true);
+  assert.equal(steps.some((step) => step.type === 'assertText' && step.expected === ''), true);
+  assert.equal(JSON.stringify(plan).includes('/app'), false);
+  assert.equal(JSON.stringify(plan).includes('demo123'), false);
+  const grounded = ai.groundPlan({
+    title: plan.title,
+    summary: plan.summary,
+    source: 'mock',
+    proposed: true,
+    cases: [{
+      name: 'edited',
+      steps: [{ id: 'a', type: 'click', proposed: true, selector: { strategy: 'testid', attr: 'data-testid', value: 'not-on-page' } }],
+    }],
+  }, evidence);
+  assert.equal(grounded.cases[0].steps[0].selector, undefined);
+  const approved = steps.map((step) => (step.type === 'assertText' ? { ...step, expected: 'Wrong message' } : step));
+  const playwright = code.renderPlaywright(approved);
+  assert.match(playwright, /getByTestId\("error"\)/);
+  assert.match(playwright, /getByTestId\("username"\)/);
+  assert.match(playwright, /TEST_WRONGPASSWORD/);
+  assert.equal(playwright.includes('not-on-page'), false);
+  assert.equal(playwright.includes('demo123'), false);
 });
 
 test('all four generators keep the page-object flow and parameterize secrets', () => {

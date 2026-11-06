@@ -39,6 +39,7 @@ const server = createServer(async (request, response) => {
   for await (const chunk of request) chunks.push(chunk);
   const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
   const prompt = String(body.prompt || '').slice(0, 2000);
+  const pageEvidence = Array.isArray(body.pageEvidence) ? body.pageEvidence.slice(0, 60) : [];
   if (!prompt) {
     response.writeHead(400, { 'content-type': 'application/json' });
     response.end(JSON.stringify({ error: 'Prompt is required' }));
@@ -56,9 +57,16 @@ const server = createServer(async (request, response) => {
       messages: [
         {
           role: 'system',
-          content: 'Return a JSON test plan with title, summary, and cases. Each case has name and steps. Allowed step types: navigate, click, input, checkbox, radio, select, submit, wait, assertVisible, assertText, assertUrl, assertExists. Do not return JavaScript.',
+          content: 'Return a JSON test plan with title, summary, and cases. Each case has name and steps. Allowed step types: navigate, click, input, checkbox, radio, select, submit, wait, assertVisible, assertText, assertUrl, assertExists. Use a selector only when its value appears in pageEvidence. If it does not, omit the selector. Do not return JavaScript, HTML, or cookies.',
         },
-        { role: 'user', content: JSON.stringify({ prompt, targetOrigin: String(body.targetOrigin || '').slice(0, 200) }) },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            prompt,
+            targetOrigin: String(body.targetOrigin || '').slice(0, 200),
+            pageEvidence,
+          }),
+        },
       ],
     }),
   });

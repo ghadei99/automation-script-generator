@@ -278,6 +278,9 @@ async function executeStepOnTab(tabId, step, timeoutMs, params) {
   if (step.type === 'assertUrl') {
     const actual = tab.url || '';
     const expected = step.expected || step.url || '';
+    if (!expected) {
+      throw Object.assign(new Error('Expected URL was not set'), { expected: '', actual });
+    }
     const ok = step.match === 'partial' ? actual.includes(expected) : actual === expected;
     if (!ok) throw Object.assign(new Error('URL did not match'), { expected, actual });
     return { actual };
@@ -737,14 +740,20 @@ async function handleMessage(message, sender) {
   if (message.type === 'ai:plan') {
     const settings = await getSettings();
     const mode = message.mode || settings.aiMode || 'mock';
+    const evidence = await pageEvidence(message.tabId);
+    const context = {
+      origin: message.origin || '',
+      pageUrl: (evidence && evidence.pageUrl) || message.origin || '',
+      evidence,
+    };
     if (mode !== 'live') {
-      return { ok: true, mode: 'mock', plan: ASG.mockPlan(message.prompt, { origin: message.origin || '' }) };
+      return { ok: true, mode: 'mock', plan: ASG.mockPlan(message.prompt, context) };
     }
     if (!settings.aiProxyUrl) {
       return { ok: false, message: 'No AI proxy is configured. Use mock mode, or save a proxy URL in Settings.' };
     }
-    const plan = await requestLivePlan(message.prompt, message.origin, settings);
-    return { ok: true, mode: 'live', plan };
+    const plan = await requestLivePlan(message.prompt, context.pageUrl, evidence, settings);
+    return { ok: true, mode: 'live', plan: ASG.groundPlan(plan, evidence) };
   }
 
   return { ok: false, message: 'Unknown message' };
@@ -756,7 +765,45 @@ function clampTimeout(value, fallback) {
   return Math.max(1000, Math.min(120000, Math.round(number)));
 }
 
-async function requestLivePlan(prompt, origin, settings) {
+async function pageEvidence(tabId) {
+  if (tabId == null) return null;
+  let tab;
+  try {
+    tab = await chrome.tabs.get(tabId);
+  } catch (error) {
+    return null;
+  }
+  const reason = ASG.unsupportedReason(tab.url || '');
+  if (!tab.url || (reason && reason !== 'ignore')) return null;
+  if (!(await hasOriginPermission(tab.url))) return null;
+  try {
+    const [injected] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: ASG.collectPageEvidence,
+    });
+    const result = injected && injected.result;
+    if (!result || !Array.isArray(result.items)) return null;
+    return {
+      pageUrl: String(result.pageUrl || tab.url).slice(0, 2000),
+      title: String(result.title || '').slice(0, 120),
+      items: result.items.slice(0, 60).map((item) => ({
+        tag: String(item.tag || '').slice(0, 40),
+        type: String(item.type || '').slice(0, 40),
+        testid: String(item.testid || '').slice(0, 80),
+        id: String(item.id || '').slice(0, 80),
+        name: String(item.name || '').slice(0, 80),
+        role: String(item.role || '').slice(0, 40),
+        label: String(item.label || '').slice(0, 80),
+        text: String(item.text || '').slice(0, 80),
+        hidden: !!item.hidden,
+      })),
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
+async function requestLivePlan(prompt, origin, evidence, settings) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
   try {
@@ -769,6 +816,7 @@ async function requestLivePlan(prompt, origin, settings) {
       body: JSON.stringify({
         prompt: String(prompt || '').slice(0, 2000),
         targetOrigin: origin || '',
+        pageEvidence: evidence && evidence.items ? evidence.items : [],
       }),
     });
     if (!response.ok) throw new Error(`AI proxy returned HTTP ${response.status}`);

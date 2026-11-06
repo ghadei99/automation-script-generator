@@ -6,7 +6,9 @@
   "scripts": {
     "test": "node --test test/*.test.mjs",
     "demo": "node demo/server.mjs",
-    "test:acceptance": "node test/acceptance.mjs"
+    "test:acceptance": "node test/acceptance.mjs",
+    "test:persistence": "node test/persistence.mjs",
+    "test:ai": "node test/ai-flow.mjs"
   },
   "devDependencies": {
     "jsdom": "^25.0.1",
