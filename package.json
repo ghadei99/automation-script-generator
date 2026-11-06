@@ -11,7 +11,8 @@
     "test:ai": "node test/ai-flow.mjs",
     "test:ai-login": "node test/ai-login.mjs",
     "test:screenshot": "node test/screenshot.mjs",
-    "test:playwright": "node test/playwright-export.mjs"
+    "test:playwright": "node test/playwright-export.mjs",
+    "test:shop": "node test/shop.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",

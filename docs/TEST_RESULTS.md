@@ -172,3 +172,36 @@ No JPEG was returned. The automated session cannot click the toolbar icon, which
 `node test/playwright-export.mjs`: the official Playwright runner executed the exported success login. `recorded.spec.ts` passed. `recorded-fail.spec.ts` failed on `toHaveURL`: expected `http://127.0.0.1:52379/not-the-app`, received `http://127.0.0.1:52379/app.html`. The runner output and the written files did not contain `demo123`. `TEST_PASSWORD` was supplied only as an environment variable.
 
 Mock AI passed inside `npm test` and `node test/ai-login.mjs`. Live AI was not called. The proxy tests proved it refuses to listen without its credentials, rejects a non-local provider URL, requires the bearer token, drops password values from page evidence, rejects a plan that contains `script`, returns 429 after 10 requests in a minute, and does not put the provider key in its responses or logs. The proxy binds to `127.0.0.1` and is not deployed.
+
+## UI and code generation, 2026-11-06
+
+Branch `feature/ui-codegen-quality`, started from `03cd199`.
+
+Commands:
+
+```bash
+npm test
+node test/shop.mjs
+node test/acceptance.mjs
+node test/ai-login.mjs
+node test/screenshot.mjs
+node test/playwright-export.mjs
+node test/ai-flow.mjs
+node test/persistence.mjs
+```
+
+`npm test`: 19 passed, 0 failed, 1 skipped. The skip is still the live provider smoke test. The new unit test checks short method names, one dropped repeated click, both real navigations, no `javascript:` URL, the cart assertion, and `TEST_PASSWORD`.
+
+`node test/shop.mjs`: 5 passed, 0 failed. Chrome recorded the local Demo Web Shop, from the catalog to the notebook page, then Add to cart. Replay passed and the page showed `Notebook is in the cart`. The step list used short titles such as `Click add-cart`, numbered from `01`, and the editor showed `Strategy: testid` plus the CSS path. The AI panel showed `Mock AI`. The official Playwright runner then passed the exported spec. `demo123` was not in the export or the runner output.
+
+`node test/acceptance.mjs`: 16 passed, 0 failed.
+
+`node test/ai-login.mjs`: 5 passed, 0 failed.
+
+`node test/screenshot.mjs`: 5 passed, 0 failed.
+
+`node test/playwright-export.mjs`: the login export passed. The wrong URL assertion failed with expected `/not-the-app` and received `/app.html`. The password was absent from the output and files.
+
+`node test/ai-flow.mjs`: 4 passed, 0 failed.
+
+`node test/persistence.mjs`: the UI save, Chrome restart, and reopened step list passed. The extensions-page Reload check remains the known debug-session limitation and is not a product failure.
