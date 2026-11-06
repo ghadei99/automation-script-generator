@@ -602,7 +602,7 @@ function renderAi() {
   wrap.append(h('div', { class: 'card' }, mode === 'live' && model.settings.aiProxyUrl
     ? `Live proxy: ${model.settings.aiProxyUrl}`
     : 'Mock mode is active. No provider is called unless you save a proxy URL and choose Live in Settings.'));
-  wrap.append(h('textarea', { id: 'aiPrompt' }, 'Test login with valid and invalid credentials, check error messages, and verify navigation.'));
+  wrap.append(h('textarea', { id: 'aiPrompt' }, 'Test the login form, verify invalid credentials show an error, then test a successful login.'));
   wrap.append(h('div', { class: 'row' }, h('button', { class: 'primary', id: 'aiGenerate', onclick: generatePlan }, 'Generate proposal')));
   if (!aiPlan) return wrap;
   wrap.append(h('div', { class: 'card' }, h('strong', {}, 'Proposed, not executed. '), aiPlan.summary || ''));
@@ -626,17 +626,7 @@ function renderAi() {
 }
 
 function editAiStep(caseIndex, stepIndex, summary) {
-  const step = aiPlan.cases[caseIndex].steps[stepIndex];
-  if (step.type === 'navigate' || step.type === 'assertUrl') step.expected = summary;
-  if (step.type === 'navigate') step.url = summary.replace(/^Navigate\s+/, '') || step.url;
-  if (step.type === 'assertText') {
-    const match = summary.match(/"([^"]*)"/);
-    if (match) step.expected = match[1];
-  }
-  if (step.type === 'input' && !step.secret) {
-    const match = summary.match(/^Enter "(.*)"/);
-    if (match) step.value = match[1];
-  }
+  ASG.applyStepEdit(aiPlan.cases[caseIndex].steps[stepIndex], summary);
 }
 
 async function generatePlan() {
