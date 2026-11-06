@@ -58,7 +58,25 @@ The Export view generates the four existing formats from the same step list. Sec
 
 The AI assistant in mock mode builds a proposed plan on this machine. It does not call a provider. Selectors are copied from the open page when one element matches. The error message and the page a successful login should reach are left blank, because they were not visible when the plan was created. Edit those, then choose Approve and save. A run is the only thing that can pass or fail.
 
-Live mode calls only a proxy URL you save in Settings. The extension has no provider key. `server/ai-proxy.mjs` is a local reference proxy. It listens on `127.0.0.1` only, exits unless `PROXY_AUTH_TOKEN` and `AI_API_KEY` are set, and is not deployed. A live call runs only when those values are present in the environment.
+Live mode calls only a proxy URL you save in Settings. The extension has no provider key. `server/ai-proxy.mjs` is a local reference proxy. It listens on `127.0.0.1` only, exits unless `PROXY_AUTH_TOKEN` and `AI_API_KEY` are set, and is not deployed. A live call sends the prompt and a compact page summary, not the DOM, cookies, or field values. Approving a live plan saves it. The same prompt and page summary reuse that plan and do not call the provider again. The Chrome Web Store policy notes are in `docs/AI_POLICY.md`.
+
+To run the real-provider check:
+
+```bash
+export PROXY_AUTH_TOKEN='a long random token'
+export AI_API_KEY='the provider key'
+export AI_MODEL='gpt-4.1-mini'          # optional
+export AI_BASE_URL='https://api.openai.com/v1/chat/completions'  # optional; https, or http://127.0.0.1 for a stub
+node server/ai-proxy.mjs
+```
+
+In another shell, with the same `PROXY_AUTH_TOKEN` and `AI_API_KEY`:
+
+```bash
+node --test test/live-ai.test.mjs
+```
+
+Put `http://127.0.0.1:8787` and the same proxy token in Settings, choose Live proxy, and generate a proposal. If those variables are unset, the live test is UNVERIFIED. It is not a pass.
 
 ## Current limits
 
