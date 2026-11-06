@@ -345,9 +345,24 @@ test('generated names stay short, repeated clicks drop, and validations remain',
   assert.equal(span.strategy, 'css');
   assert.equal(span.fragile, true);
   assert.match(span.warning, /structural CSS/);
+  const ids = sequentialIds();
+  let session = reducer.createSession({
+    tabId: 7,
+    origin: 'https://shop.example',
+    url: 'https://shop.example/catalog',
+    networkCapture: false,
+  }, ids);
+  const add = { strategy: 'testid', value: 'add-cart', matchCount: 1 };
+  session = reducer.reduceEvent(session, { kind: 'ui', step: { type: 'click', selector: add, recordedAt: 15 } }, ids);
+  session = reducer.reduceEvent(session, { kind: 'ui', step: { type: 'click', selector: add, recordedAt: 15 } }, ids);
+  session = reducer.reduceEvent(session, { kind: 'ui', step: { type: 'click', selector: add, recordedAt: 480 } }, ids);
+  const recordedClicks = session.steps.filter((step) => step.type === 'click');
+  assert.equal(recordedClicks.length, 2);
+  assert.deepEqual(recordedClicks.map((step) => step.recordedAt), [15, 480]);
   const model = code.buildPageModel([
-    { type: 'click', selector: { strategy: 'testid', value: 'add-cart' } },
-    { type: 'click', selector: { strategy: 'testid', value: 'add-cart' } },
+    { type: 'click', selector: add, recordedAt: 15 },
+    { type: 'click', selector: add, recordedAt: 15 },
+    { type: 'click', selector: add, recordedAt: 480 },
     { type: 'navigate', url: 'https://shop.example/catalog' },
     { type: 'navigate', url: 'https://shop.example/product' },
     { type: 'navigate', url: 'javascript:alert(1)' },
@@ -357,7 +372,12 @@ test('generated names stay short, repeated clicks drop, and validations remain',
     { type: 'assertUrl', expected: 'https://shop.example/product', match: 'exact' },
   ]);
   const names = model.calls.map((call) => call.name);
-  assert.deepEqual(names.filter((name) => name.startsWith('click')), ['clickAddCart', 'clickElement']);
+  assert.deepEqual(names.filter((name) => name.startsWith('click')), ['clickAddCart', 'clickAddCart', 'clickElement']);
+  const keptOnPurpose = code.buildPageModel([
+    { type: 'click', selector: add },
+    { type: 'click', selector: add },
+  ]);
+  assert.equal(keptOnPurpose.calls.length, 2);
   assert.deepEqual(model.calls.filter((call) => call.name === 'navigateTo').map((call) => call.args[0]), [
     'https://shop.example/catalog',
     'https://shop.example/product',
@@ -377,6 +397,20 @@ test('generated names stay short, repeated clicks drop, and validations remain',
   assert.equal(playwright.includes('javascript:'), false);
   assert.match(playwright, /https:\/\/shop\.example\/catalog/);
   assert.match(playwright, /https:\/\/shop\.example\/product/);
+  const page = code.renderPlaywright([
+    { type: 'click', selector: { strategy: 'testid', value: 'save', matchCount: 1 } },
+    { type: 'click', selector: { strategy: 'role', value: 'button', name: 'Save', matchCount: 1 } },
+    { type: 'click', selector: { strategy: 'css', value: 'main > div:nth-of-type(4)', uniqueCss: 'main > div:nth-of-type(4)', fragile: true, warning: 'No stable selector was unique. Using a structural CSS path.' } },
+    { type: 'click', selector: { strategy: 'testid', value: 'save', matchCount: 2, ambiguous: true, uniqueCss: 'form > button:nth-of-type(2)' } },
+  ]);
+  const methodNames = [...page.matchAll(/async (click\w+)\(/g)].map((match) => match[1]);
+  assert.deepEqual(methodNames, ['clickSave', 'clickSave2', 'clickElement', 'clickElement2']);
+  assert.equal(new Set(methodNames).size, methodNames.length);
+  assert.match(page, /async clickSave\(\) \{\n\s+await this\.page\.getByTestId\("save"\)\.click/);
+  assert.match(page, /async clickSave2\(\) \{\n\s+await this\.page\.getByRole\("button", \{ name: "Save", exact: true \}\)\.click/);
+  assert.match(page, /async clickElement\(\) \{\n\s+await this\.page\.locator\("main > div:nth-of-type\(4\)"\)\.click[\s\S]*structural CSS path/);
+  assert.match(page, /async clickElement2\(\) \{\n\s+await this\.page\.locator\("form > button:nth-of-type\(2\)"\)\.click[\s\S]*structural CSS path/);
+  assert.equal([...page.matchAll(/getByTestId\("save"\)/g)].length, 1);
 });
 
 function sequentialIds() {
