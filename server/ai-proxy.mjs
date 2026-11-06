@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { validatePlan } = require('../lib/schema.js');
+const { scrubPlan } = require('../lib/ai.js');
 
 const token = process.env.PROXY_AUTH_TOKEN || '';
 const providerKey = process.env.AI_API_KEY || '';
@@ -52,16 +53,50 @@ function publicError(text) {
 }
 
 function redactEvidence(items) {
-  const allowed = ['tag', 'type', 'testid', 'id', 'name', 'role', 'label', 'text', 'hidden'];
-  return items.slice(0, 60).map((item) => {
+  const allowed = ['tag', 'type', 'testid', 'id', 'name', 'role', 'label', 'text', 'hidden', 'form'];
+  return items.slice(0, 24).map((item) => {
     if (!item || typeof item !== 'object') return {};
     const out = {};
     for (const key of allowed) {
       if (item[key] == null) continue;
       out[key] = key === 'hidden' ? !!item[key] : String(item[key]).slice(0, 80);
     }
+    if (Array.isArray(item.locators)) {
+      out.locators = item.locators.slice(0, 3).map((locator) => ({
+        strategy: String(locator && locator.strategy || '').slice(0, 20),
+        value: String(locator && locator.value || '').slice(0, 120),
+        name: String(locator && locator.name || '').slice(0, 80),
+      })).filter((locator) => locator.strategy && locator.value);
+    }
     return out;
   });
+}
+
+function redactSummary(summary, legacyItems) {
+  const source = summary && typeof summary === 'object' && !Array.isArray(summary) ? summary : {};
+  const items = Array.isArray(source.items) ? source.items : legacyItems;
+  return {
+    purpose: String(source.purpose || '').slice(0, 140),
+    items: redactEvidence(Array.isArray(items) ? items : []),
+    messages: (Array.isArray(source.messages) ? source.messages : []).slice(0, 4).map((message) => ({
+      text: String(message && message.text || '').slice(0, 80),
+      testid: String(message && message.testid || '').slice(0, 80),
+      role: String(message && message.role || '').slice(0, 40),
+    })).filter((message) => message.text),
+  };
+}
+
+function readUsage(payload) {
+  const raw = payload && payload.usage;
+  if (!raw || typeof raw !== 'object') return null;
+  const promptTokens = Number(raw.prompt_tokens);
+  const completionTokens = Number(raw.completion_tokens);
+  const totalTokens = Number(raw.total_tokens);
+  if (![promptTokens, completionTokens, totalTokens].every(Number.isFinite)) return null;
+  const usage = { promptTokens, completionTokens, totalTokens };
+  if (typeof payload.model === 'string') usage.model = payload.model.slice(0, 80);
+  if (Number.isFinite(Number(raw.cost))) usage.cost = Number(raw.cost);
+  return usage;
 }
 
 function send(response, status, body) {
@@ -125,7 +160,7 @@ async function handle(request, response) {
     send(response, 400, { error: 'Prompt is required' });
     return;
   }
-  const pageEvidence = redactEvidence(Array.isArray(body.pageEvidence) ? body.pageEvidence : []);
+  const summary = redactSummary(body.summary, Array.isArray(body.pageEvidence) ? body.pageEvidence : []);
   let providerResponse;
   try {
     providerResponse = await fetch(endpoint, {
@@ -141,14 +176,14 @@ async function handle(request, response) {
         messages: [
           {
             role: 'system',
-            content: 'Return a JSON test plan with title, summary, and cases. Each case has name and steps. Allowed step types: navigate, click, input, checkbox, radio, select, submit, wait, assertVisible, assertText, assertUrl, assertExists. Use a selector only when its value appears in pageEvidence. If it does not, omit the selector. Do not return JavaScript, HTML, or cookies.',
+            content: 'Return only JSON with title, summary, and cases. A case has name and steps. Step types: navigate, click, input, checkbox, radio, select, submit, wait, assertVisible, assertText, assertUrl, assertExists. Use a selector only when summary lists it. Password steps set secret true and paramName, and omit value. Leave unknown expected text empty. No JavaScript, HTML, or cookies.',
           },
           {
             role: 'user',
             content: JSON.stringify({
               prompt,
               targetOrigin: String(body.targetOrigin || '').slice(0, 200),
-              pageEvidence,
+              summary,
             }),
           },
         ],
@@ -179,12 +214,15 @@ async function handle(request, response) {
   }
   let safe;
   try {
-    safe = validatePlan({ ...plan, source: 'live' });
+    safe = validatePlan(scrubPlan({ ...plan, source: 'live' }));
   } catch (error) {
     send(response, 502, { error: publicError(`Provider plan was rejected: ${error.message}`) });
     return;
   }
-  send(response, 200, { ...safe, provider });
+  const responseBody = { ...safe, provider };
+  const usage = readUsage(payload);
+  if (usage) responseBody.usage = usage;
+  send(response, 200, responseBody);
 }
 
 server.listen(Number(process.env.PORT || 8787), '127.0.0.1', () => {
