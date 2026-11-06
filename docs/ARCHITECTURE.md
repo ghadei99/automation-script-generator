@@ -30,7 +30,7 @@ Network capture is off by default. The main-world hook in `injected/network.js` 
 
 `lib/runner.js` runs steps in order. A thrown step is `failed`. Every later step is `skipped`. Stop becomes `stopped`. The runner never rewrites a failure into a pass. The service worker performs navigation and URL assertions, because the content script is destroyed on a full load. Element steps run in `content.js`. A click that navigates is treated as success only when the tab actually changes URL. If the service worker dies mid-run, startup marks that run `interrupted` and records why. That is not a pass.
 
-Results, saved tests, and the draft session live in `chrome.storage.local`. There is no database server. Screenshots are requested with `chrome.tabs.captureVisibleTab` after the failing tab is focused. On Chrome 156 that call still requires `<all_urls>` or a live `activeTab` grant, which site-scoped host permissions do not satisfy. The stored result then has `screenshot: null` and the Chrome error in `screenshotError`.
+Results, saved tests, and the draft session live in `chrome.storage.local`. There is no database server. Screenshots are requested with `chrome.tabs.captureVisibleTab` after the failing tab is focused. On Chrome 156 that call requires `<all_urls>` or a live `activeTab` grant from a click on the extension icon. Site-scoped host permissions do not satisfy it, and a later navigation clears the grant. The extension does not request `<all_urls>`. A stored image has to be a JPEG Chrome returned. Otherwise `screenshot` is null and `screenshotError` starts with "Screenshot unavailable" followed by the reason, including Chrome's own message. The Results view shows that text and does not render a placeholder image.
 
 ## Controller
 
@@ -40,7 +40,7 @@ Results, saved tests, and the draft session live in `chrome.storage.local`. Ther
 
 Mock mode in `lib/ai.js` returns a plan that `validatePlan` accepts. Before that, the service worker reads a short element list from the open tab: tag, test id, id, name, label, and visible text. It does not read field values. A selector is attached only when one of those elements matches. Any other selector is removed. Saving a plan creates a test with `source: "ai"`. Nothing runs it automatically.
 
-Live mode POSTs `{ prompt, targetOrigin }` to the URL in settings, with an optional bearer token stored only in extension storage. The response must pass the same schema. The reference proxy in `server/ai-proxy.mjs` refuses to listen without `PROXY_AUTH_TOKEN` and `AI_API_KEY`. Remote model text is not evaluated. Replay only executes the allowlisted step types.
+Live mode POSTs `{ prompt, targetOrigin, pageEvidence }` to the URL in settings, with an optional bearer token stored only in extension storage. Page evidence is the same element list used by mock mode. The response must pass the same schema. The reference proxy in `server/ai-proxy.mjs` binds to `127.0.0.1`, refuses to listen without `PROXY_AUTH_TOKEN` and `AI_API_KEY`, allows 10 requests a minute, strips values that are not element metadata, and returns a plan only after `validatePlan`. It does not put the provider key in a response. Remote model text is not evaluated. Replay only executes the allowlisted step types. The proxy is not deployed.
 
 ## Manifest V3
 

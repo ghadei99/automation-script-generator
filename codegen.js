@@ -120,7 +120,7 @@ function toIdentifier(text) {
   if (!words.length) return 'Element';
   let name = words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join('');
   if (/^[0-9]/.test(name)) name = `El${name}`;
-  return name.slice(0, 60);
+  return name.slice(0, 32);
 }
 
 function envName(param) {
@@ -149,10 +149,83 @@ const METHOD_PREFIXES = {
   assertUrl: 'assertUrl',
 };
 
-function selectorLabel(selector) {
+function selectorKey(selector) {
+  if (!selector) return '';
+  return [selector.strategy, selector.attr || '', selector.value || '', selector.name || ''].join('|');
+}
+
+function plainUrl(value, allowPartial) {
+  const text = String(value ?? '').trim();
+  if (!text || /[\u0000-\u001f]/.test(text)) return '';
+  if (/^[a-z][a-z0-9+.-]*:/i.test(text)) {
+    try {
+      const url = new URL(text);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+      return url.href;
+    } catch (error) {
+      return '';
+    }
+  }
+  return allowPartial ? text : '';
+}
+
+function confirmedUnique(selector) {
+  if (!selector || selector.ambiguous || selector.fragile || selector.strategy === 'css') return false;
+  if (Number.isFinite(selector.matchCount) && selector.matchCount !== 1) return false;
+  return true;
+}
+
+function exportSelector(selector) {
+  if (!selector || confirmedUnique(selector) || selector.strategy === 'css') return selector;
+  if (!selector.uniqueCss) return selector;
+  return {
+    ...selector,
+    strategy: 'css',
+    value: selector.uniqueCss,
+    fragile: true,
+    warning: selector.warning || 'Selector was not unique. Using a structural CSS path. Verify it before relying on this step.',
+  };
+}
+
+function methodLabel(selector) {
   if (!selector) return 'Element';
-  if (selector.name && selector.strategy === 'role') return selector.name;
-  return selector.value || selector.uniqueCss || 'Element';
+  if (selector.strategy === 'role' && selector.name) return selector.name;
+  if (['testid', 'id', 'name', 'text', 'ariaLabel', 'label', 'placeholder'].includes(selector.strategy)) {
+    return selector.value || 'Element';
+  }
+  const css = String(selector.uniqueCss || selector.value || '');
+  if (selector.strategy === 'css' && css && css.length <= 24 && !css.includes('>') && !css.includes(':nth')) return css;
+  return 'Element';
+}
+
+function prepareActions(actions) {
+  const prepared = [];
+  for (const action of actions || []) {
+    if (!action || !action.type) continue;
+    if (action.type === 'navigate') {
+      const url = plainUrl(action.url, false);
+      if (!url) continue;
+      const previous = prepared[prepared.length - 1];
+      if (previous && previous.type === 'navigate' && previous.url === url) continue;
+      prepared.push({ ...action, url });
+      continue;
+    }
+    if (action.type === 'assertUrl') {
+      const raw = action.expected || action.url || '';
+      prepared.push({ ...action, expected: plainUrl(raw, true) });
+      continue;
+    }
+    const previous = prepared[prepared.length - 1];
+    const sameRecorderEvent = previous
+      && (action.type === 'click' || action.type === 'dblclick')
+      && previous.type === action.type
+      && selectorKey(previous.selector) === selectorKey(action.selector)
+      && Number.isFinite(previous.recordedAt)
+      && previous.recordedAt === action.recordedAt;
+    if (sameRecorderEvent) continue;
+    prepared.push(action);
+  }
+  return prepared;
 }
 
 function buildPageModel(actions) {
@@ -160,6 +233,7 @@ function buildPageModel(actions) {
   const methodKeyToName = new Map();
   const usedNames = new Set();
   const calls = [];
+  actions = prepareActions(actions);
 
   function uniqueName(base) {
     let name = base || 'step';
@@ -198,13 +272,13 @@ function buildPageModel(actions) {
     }
 
     if (!METHOD_PREFIXES[action.type]) continue;
-    const sel = action.selector;
+    const sel = exportSelector(action.selector);
     const key = sel
       ? `${action.type}:${sel.strategy}:${sel.attr || ''}:${sel.value}:${sel.name || ''}`
       : action.type;
     let name = methodKeyToName.get(key);
     if (!name) {
-      name = uniqueName(`${METHOD_PREFIXES[action.type]}${toIdentifier(selectorLabel(sel))}`);
+      name = uniqueName(`${METHOD_PREFIXES[action.type]}${toIdentifier(methodLabel(sel))}`);
       methodKeyToName.set(key, name);
       methods.push({ name, type: action.type, selector: sel });
     }

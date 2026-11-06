@@ -315,22 +315,83 @@ async function executeStepOnTab(tabId, step, timeoutMs, params) {
   return { actual: response.actual };
 }
 
-async function captureFailure(tabId) {
+function unavailable(reason) {
+  return { screenshot: null, screenshotError: `Screenshot unavailable. ${reason}` };
+}
+
+function isCapturedJpeg(value) {
+  return typeof value === 'string' && value.startsWith('data:image/jpeg;base64,/9j/') && value.length > 100;
+}
+
+async function readCaptureGrants() {
   try {
-    const tab = await chrome.tabs.get(tabId);
+    const stored = await chrome.storage.session.get('captureGrants');
+    return stored.captureGrants && typeof stored.captureGrants === 'object' ? stored.captureGrants : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+async function noteCaptureGrant(tab) {
+  if (!tab || tab.id == null) return;
+  const grants = await readCaptureGrants();
+  grants[String(tab.id)] = { url: tab.url || '', at: Date.now() };
+  await chrome.storage.session.set({ captureGrants: grants });
+}
+
+function expireCaptureGrant(details) {
+  if (!details || details.frameId !== 0) return;
+  readCaptureGrants().then((grants) => {
+    const grant = grants[String(details.tabId)];
+    if (!grant || grant.cleared || !grant.url || details.url === grant.url) return;
+    grants[String(details.tabId)] = { url: details.url, at: grant.at, cleared: 'navigation' };
+    return chrome.storage.session.set({ captureGrants: grants });
+  }).catch(() => {});
+}
+
+chrome.webNavigation.onCommitted.addListener(expireCaptureGrant);
+
+async function captureFailure(tabId) {
+  let tab;
+  try {
+    tab = await chrome.tabs.get(tabId);
+  } catch (error) {
+    return unavailable('The tab closed before a screenshot could be taken.');
+  }
+  const blocked = ASG.unsupportedReason(tab.url || '');
+  if (!tab.url || blocked) {
+    const reason = blocked === 'ignore'
+      ? 'This browser page cannot be captured.'
+      : (blocked || 'This page cannot be captured.');
+    return unavailable(reason);
+  }
+  if (!(await hasOriginPermission(tab.url))) {
+    return unavailable(`Site access for ${ASG.originOf(tab.url)} is missing or was revoked. Approve that origin from the recorder, then run again.`);
+  }
+  const grant = (await readCaptureGrants())[String(tabId)];
+  try {
     await chrome.tabs.update(tabId, { active: true });
-    await chrome.windows.update(tab.windowId, { focused: true });
+    if (tab.windowId != null) await chrome.windows.update(tab.windowId, { focused: true });
+  } catch (error) {
+    return unavailable(`The tab could not be brought to the front. ${error.message || 'It may be discarded or closed.'}`);
+  }
+  try {
     await delay(200);
     const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 60 });
-    if (!dataUrl || !dataUrl.startsWith('data:image/')) {
-      return { screenshot: null, screenshotError: 'Screenshot was not returned by Chrome.' };
-    }
-    if (dataUrl.length > 900000) {
-      return { screenshot: null, screenshotError: 'Screenshot was captured but omitted because it is too large to store.' };
-    }
+    if (!isCapturedJpeg(dataUrl)) return unavailable('Chrome did not return a JPEG image.');
+    if (dataUrl.length > 900000) return unavailable('Chrome returned an image, but it is too large to store.');
     return { screenshot: dataUrl, screenshotError: null };
   } catch (error) {
-    return { screenshot: null, screenshotError: error.message || 'Screenshot permission is not available for this tab.' };
+    const message = error.message || 'Chrome did not allow the capture.';
+    if (/all_urls|activeTab/i.test(message)) {
+      const why = grant && grant.cleared === 'navigation'
+        ? 'The page navigated after the extension icon was clicked, which clears Chrome\'s capture permission for that tab. Click the icon again on this tab and rerun before the page navigates.'
+        : grant
+          ? 'The extension icon was used on this tab, but Chrome did not keep the capture permission. Click the icon again and rerun before the page navigates.'
+          : 'Click the extension icon while this tab is active, then run the test again. Chrome grants capture for that tab after the click and clears it when the page navigates.';
+      return unavailable(`${why} Chrome reported: ${message}`);
+    }
+    return unavailable(message);
   }
 }
 
@@ -481,6 +542,11 @@ chrome.webNavigation.onHistoryStateUpdated.addListener(onNavigation);
 chrome.webNavigation.onReferenceFragmentUpdated.addListener(onNavigation);
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  readCaptureGrants().then((grants) => {
+    if (!grants[String(tabId)]) return;
+    delete grants[String(tabId)];
+    return chrome.storage.session.set({ captureGrants: grants });
+  }).catch(() => {});
   if (session && session.tabId === tabId && (session.status === 'recording' || session.status === 'paused')) {
     withLock(async () => {
       const paused = ASG.reduceEvent(session, { kind: 'status', status: 'paused' });
@@ -841,7 +907,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-chrome.action.onClicked.addListener(async () => {
+chrome.action.onClicked.addListener(async (tab) => {
+  await noteCaptureGrant(tab).catch(() => {});
   const url = chrome.runtime.getURL('popup.html');
   const existing = await chrome.tabs.query({ url });
   if (existing[0]) {
