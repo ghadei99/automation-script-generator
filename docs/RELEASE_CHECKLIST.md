@@ -15,13 +15,13 @@ Status on 2026-11-06. Items are checked only when the command in `docs/TEST_RESU
 - [x] Selenium, Playwright, Cypress, and REST Assured still generate from the step list, with secrets as parameters.
 - [x] Mock AI returns an editable proposed plan and does not run it.
 - [x] `chrome://` pages are rejected with an explicit message.
-- [x] `npm test` passes (13 tests). `node test/acceptance.mjs` passes (16 scenarios) on Chrome 156.0.8078.80.
+- [x] `npm test` passes (18 passed, 1 skipped). `node test/acceptance.mjs` passes (16 scenarios) on Chrome 156.0.8078.80.
 
 ## Not done
 
-- [ ] Failure screenshots. Chrome 156 refuses `captureVisibleTab` without `<all_urls>` or a fresh `activeTab` invocation. The error is stored. Do not tell users a screenshot exists.
-- [ ] Playwright runner execution of the exported spec. The file is generated and checked as text.
-- [ ] Live AI. Leave Settings on Mock unless a proxy with its own auth, rate limit, and server-side key is deployed. Do not ship `AI_API_KEY` in the extension.
+- [ ] Failure screenshots from an automated run. Chrome 156 still refuses `captureVisibleTab` without `<all_urls>` or a fresh toolbar click. The product stores "Screenshot unavailable" and Chrome's reason. A toolbar click on the same page can grant capture; navigation clears it. Do not tell users a screenshot exists unless a JPEG was stored.
+- [x] Playwright runner execution of the exported login spec. The success case passes against the demo with `TEST_PASSWORD`. A deliberately wrong URL assertion fails.
+- [ ] Live AI against a provider. The local proxy enforces auth, a rate limit, and schema validation, and it stays on `127.0.0.1`. The opt-in smoke test skips unless `PROXY_AUTH_TOKEN` and `AI_API_KEY` are set. Do not ship `AI_API_KEY` in the extension, and do not deploy the proxy.
 - [ ] Chrome Web Store submission. The package does not eval remote code, and that still needs a store review.
 - [ ] Reload from the `chrome://extensions` card. In the automated session that navigation started returning `ERR_BLOCKED_BY_CLIENT`.
 

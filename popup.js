@@ -449,6 +449,23 @@ function renderRun() {
   return wrap;
 }
 
+function appendScreenshot(line, result) {
+  const image = result && result.screenshot;
+  const captured = typeof image === 'string' && image.startsWith('data:image/jpeg;base64,/9j/') && image.length > 100;
+  if (captured) {
+    const node = new Image();
+    node.alt = 'Failure screenshot';
+    node.src = image;
+    node.style.maxWidth = '100%';
+    line.append(node);
+    return;
+  }
+  if (result && result.screenshotError) {
+    const reason = String(result.screenshotError).replace(/^Screenshot unavailable\.?\s*/i, '');
+    line.append(h('div', { class: 'muted' }, `Screenshot unavailable. ${reason}`));
+  }
+}
+
 function renderActiveRun() {
   const run = model.activeRun;
   if (!run) return h('div', { class: 'card muted' }, 'No run yet.');
@@ -459,13 +476,7 @@ function renderActiveRun() {
     if (result.message) line.append(document.createTextNode(` — ${result.message}`));
     if (result.expected != null) line.append(h('div', {}, `Expected: ${result.expected}`));
     if (result.actual != null) line.append(h('div', {}, `Actual: ${result.actual}`));
-    if (result.screenshot && String(result.screenshot).startsWith('data:image/')) {
-      const image = new Image();
-      image.alt = 'Failure screenshot';
-      image.src = result.screenshot;
-      image.style.maxWidth = '100%';
-      line.append(image);
-    } else if (result.screenshotError) line.append(h('div', { class: 'muted' }, result.screenshotError));
+    appendScreenshot(line, result);
     box.append(line);
   });
   return box;
@@ -526,13 +537,7 @@ function runDetail(run) {
     if (result.message) line.append(h('div', {}, result.message));
     if (result.expected != null) line.append(h('div', {}, `Expected: ${result.expected}`));
     if (result.actual != null) line.append(h('div', {}, `Actual: ${result.actual}`));
-    if (result.screenshot && String(result.screenshot).startsWith('data:image/')) {
-      const image = new Image();
-      image.alt = 'Failure screenshot';
-      image.src = result.screenshot;
-      image.style.maxWidth = '100%';
-      line.append(image);
-    } else if (result.screenshotError) line.append(h('div', { class: 'muted' }, result.screenshotError));
+    appendScreenshot(line, result);
     box.append(line);
   });
   return box;

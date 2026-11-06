@@ -52,17 +52,17 @@ node test/acceptance.mjs
 
 ## Code export
 
-The Export view generates the four existing formats from the same step list. Secret inputs are emitted as environment parameters (`TEST_PASSWORD`, `Cypress.env`, `System.getenv`), not as literals. Playwright is the output intended to drop into a `@playwright/test` project. This repo's checks generate that file and assert its shape. They do not launch the Playwright runner.
+The Export view generates the four existing formats from the same step list. Secret inputs are emitted as environment parameters (`TEST_PASSWORD`, `Cypress.env`, `System.getenv`), not as literals. Playwright is the output intended to drop into a `@playwright/test` project. `npm run test:playwright` writes that export and runs it with the Playwright test runner against the demo.
 
 ## AI proposals
 
 The AI assistant in mock mode builds a proposed plan on this machine. It does not call a provider. Selectors are copied from the open page when one element matches. The error message and the page a successful login should reach are left blank, because they were not visible when the plan was created. Edit those, then choose Approve and save. A run is the only thing that can pass or fail.
 
-Live mode calls only a proxy URL you save in Settings. The extension has no provider key. `server/ai-proxy.mjs` is a reference proxy that exits unless `PROXY_AUTH_TOKEN` and `AI_API_KEY` are set. It is not deployed.
+Live mode calls only a proxy URL you save in Settings. The extension has no provider key. `server/ai-proxy.mjs` is a local reference proxy. It listens on `127.0.0.1` only, exits unless `PROXY_AUTH_TOKEN` and `AI_API_KEY` are set, and is not deployed. A live call runs only when those values are present in the environment.
 
 ## Current limits
 
-- Failure screenshots are not available on Chrome 156 with site-scoped host permissions. `captureVisibleTab` returns "Either the '<all_urls>' or 'activeTab' permission is required." The run still stores the failing step, message, expected value, and actual value. The extension does not invent a screenshot.
+- Failure screenshots on Chrome 156 need a click on the extension icon for the tab being tested. Site access does not satisfy `captureVisibleTab`, and `<all_urls>` is not requested. The permission ends when that tab navigates. If Chrome does not return an image, Results shows "Screenshot unavailable" and the Chrome error. The extension does not invent a screenshot.
 - Replay cannot drive `chrome://` pages, the Chrome Web Store, or other non-http(s) URLs. Start tells you that.
 - A full Reload from `chrome://extensions` in the automated session blocks the extension page afterwards. The acceptance run instead terminates the service worker and reads the saved test back through a new one.
 - AI output is data for the local step runner. The extension does not evaluate model text as JavaScript.

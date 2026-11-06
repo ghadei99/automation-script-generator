@@ -136,3 +136,39 @@ node test/acceptance.mjs
 `node test/acceptance.mjs`: 16 passed, 0 failed.
 
 Live mode was not called. The proxy was not started. The Playwright test runner was not used to execute the exported file. Screenshot: `test-results/ai-login-failed.png`.
+
+## Release candidate, 2026-11-06
+
+Branch `feature/ai-login-execution`. Chrome/156.0.8078.80.
+
+Commands:
+
+```bash
+npm test
+node test/ai-login.mjs
+node test/acceptance.mjs
+node test/screenshot.mjs
+node test/playwright-export.mjs
+```
+
+`npm test`: 18 passed, 0 failed, 1 skipped. The skip is `test/live-ai.test.mjs`, because `PROXY_AUTH_TOKEN` and `AI_API_KEY` are not set. The same run includes the four code generators and the local proxy checks in `test/proxy.test.mjs`.
+
+`node test/ai-login.mjs`: 5 passed, 0 failed. Invalid credentials passed. The wrong expected text failed with actual `Invalid credentials` and later steps skipped. The approved success login passed and the page showed `Welcome, Demo`. The export and extension storage did not contain `demo123` or `not-the-password`.
+
+`node test/acceptance.mjs`: 16 passed, 0 failed.
+
+`node test/screenshot.mjs`: 5 passed, 0 failed.
+
+| Scenario | Result | Evidence |
+|---|---|---|
+| Failed assertion | Pass | No image stored. `screenshotError` starts with `Screenshot unavailable` and includes Chrome's `activeTab` / `<all_urls>` message |
+| Results view | Pass | The text `Screenshot unavailable` and `activeTab` were visible. No failure image was shown |
+| Navigation | Pass | The stored capture grant was marked `cleared: navigation`, and the error says the page navigated after the icon click |
+| Browser page | Pass | `Screenshot unavailable. This page cannot be scripted (chrome:// pages are blocked).` |
+| Missing origin | Pass | `Screenshot unavailable. Site access for https://example.com is missing or was revoked.` |
+
+No JPEG was returned. The automated session cannot click the toolbar icon, which is the invocation Chrome requires. `<all_urls>` was not added.
+
+`node test/playwright-export.mjs`: the official Playwright runner executed the exported success login. `recorded.spec.ts` passed. `recorded-fail.spec.ts` failed on `toHaveURL`: expected `http://127.0.0.1:52379/not-the-app`, received `http://127.0.0.1:52379/app.html`. The runner output and the written files did not contain `demo123`. `TEST_PASSWORD` was supplied only as an environment variable.
+
+Mock AI passed inside `npm test` and `node test/ai-login.mjs`. Live AI was not called. The proxy tests proved it refuses to listen without its credentials, rejects a non-local provider URL, requires the bearer token, drops password values from page evidence, rejects a plan that contains `script`, returns 429 after 10 requests in a minute, and does not put the provider key in its responses or logs. The proxy binds to `127.0.0.1` and is not deployed.
