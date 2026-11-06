@@ -1,0 +1,7 @@
+body { font: 16px/1.4 sans-serif; margin: 32px; }
+main { max-width: 420px; display: flex; flex-direction: column; gap: 10px; }
+label { display: flex; flex-direction: column; gap: 4px; }
+input { padding: 8px; }
+button { padding: 8px 12px; }
+.error { color: #912018; }
+.check { flex-direction: row; align-items: center; }

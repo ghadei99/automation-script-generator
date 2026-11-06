@@ -1,0 +1,17 @@
+{
+  "name": "automation-script-generator",
+  "private": true,
+  "version": "0.9.0",
+  "description": "Chrome extension that records a site you choose and replays it as a test.",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "demo": "node demo/server.mjs",
+    "test:acceptance": "node test/acceptance.mjs",
+    "test:persistence": "node test/persistence.mjs",
+    "test:ai": "node test/ai-flow.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1",
+    "puppeteer-core": "^24.15.0"
+  }
+}

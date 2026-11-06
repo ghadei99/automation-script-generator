@@ -1,135 +1,37 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en">
 <head>
-  <title>Selenium Code Generator</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      width: 640px;
-    }
-
-    textarea {
-      width: 100%;
-      height: 240px;
-      font-family: monospace;
-      box-sizing: border-box;
-    }
-
-    .controls {
-      margin-bottom: 8px;
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .section-tabs {
-      display: flex;
-      gap: 4px;
-      margin-bottom: 10px;
-      border-bottom: 1px solid #ccc;
-    }
-
-    .section-tabs button {
-      padding: 6px 12px;
-      cursor: pointer;
-      border: none;
-      background: none;
-      border-bottom: 2px solid transparent;
-    }
-
-    .section-tabs button.active {
-      font-weight: bold;
-      border-bottom: 2px solid #333;
-    }
-
-    .section {
-      display: none;
-    }
-
-    .section.active {
-      display: block;
-    }
-
-    .tab-strip {
-      display: none;
-      margin-bottom: 4px;
-      gap: 4px;
-    }
-
-    .tab-strip.visible {
-      display: flex;
-    }
-
-    .tab-strip button {
-      padding: 4px 10px;
-      cursor: pointer;
-    }
-
-    .tab-strip button.active {
-      font-weight: bold;
-      background: #ddd;
-    }
-
-    .code-panel {
-      display: none;
-    }
-
-    .code-panel.active {
-      display: block;
-    }
-  </style>
+  <meta charset="UTF-8">
+  <title>Browser Test Recorder</title>
+  <link rel="stylesheet" href="popup.css">
 </head>
-
 <body>
-  <h3>Generated Test Code</h3>
-
-  <div class="section-tabs" id="sectionTabs">
-    <button data-section="ui" class="active">UI Automation</button>
-    <button data-section="api">API Tests (Rest Assured)</button>
+  <header>
+    <div>
+      <h1>Browser Test Recorder</h1>
+      <p id="targetLabel">Looking for a browser tab…</p>
+    </div>
+    <div id="statusPill" class="pill idle">Idle</div>
+  </header>
+  <div class="layout">
+    <nav id="nav">
+      <button type="button" data-view="recorder" class="active">Recorder</button>
+      <button type="button" data-view="steps">Test steps</button>
+      <button type="button" data-view="run">Run tests</button>
+      <button type="button" data-view="results">Results</button>
+      <button type="button" data-view="export">Code export</button>
+      <button type="button" data-view="ai">AI assistant</button>
+      <button type="button" data-view="settings">Settings</button>
+    </nav>
+    <main id="main"></main>
   </div>
-
-  <div class="section active" id="section-ui">
-    <div class="controls">
-      <label for="frameworkSelect">Framework:</label>
-      <select id="frameworkSelect">
-        <option value="selenium">Selenium (Java)</option>
-        <option value="cypress">Cypress (JavaScript)</option>
-        <option value="playwright">Playwright (TypeScript)</option>
-        <option value="all">All (tabbed)</option>
-      </select>
-    </div>
-
-    <div class="tab-strip" id="tabStrip">
-      <button data-framework="selenium" class="active">Selenium</button>
-      <button data-framework="cypress">Cypress</button>
-      <button data-framework="playwright">Playwright</button>
-    </div>
-
-    <div class="code-panel active" id="panel-selenium">
-      <textarea id="codeBox-selenium" readonly>Loading...</textarea>
-    </div>
-    <div class="code-panel" id="panel-cypress">
-      <textarea id="codeBox-cypress" readonly>Loading...</textarea>
-    </div>
-    <div class="code-panel" id="panel-playwright">
-      <textarea id="codeBox-playwright" readonly>Loading...</textarea>
-    </div>
-  </div>
-
-  <div class="section" id="section-api">
-    <div class="code-panel active" id="panel-restassured">
-      <textarea id="codeBox-restassured" readonly>Loading...</textarea>
-    </div>
-  </div>
-
-  <div class="controls">
-    <button id="copyButton">Copy to Clipboard</button>
-    <button id="clearButton">Clear</button>
-  </div>
-
+  <footer id="errorBar" hidden></footer>
+  <script src="lib/id.js"></script>
+  <script src="lib/origin.js"></script>
+  <script src="lib/redact.js"></script>
+  <script src="lib/schema.js"></script>
+  <script src="lib/ai.js"></script>
   <script src="codegen.js"></script>
   <script src="popup.js"></script>
 </body>
-
 </html>

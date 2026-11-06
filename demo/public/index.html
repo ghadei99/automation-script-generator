@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Demo login</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main data-testid="main">
+    <h1>Demo bank</h1>
+    <form id="login">
+      <label for="username">Username</label>
+      <input id="username" data-testid="username" name="username" autocomplete="username">
+      <label for="password">Password</label>
+      <input id="password" data-testid="password" name="password" type="password" autocomplete="current-password">
+      <label class="check"><input id="remember" data-testid="remember" name="remember" type="checkbox"> Remember this browser</label>
+      <button data-testid="submit" type="submit">Sign in</button>
+      <p id="error" data-testid="error" hidden></p>
+    </form>
+  </main>
+  <script src="/login.js"></script>
+</body>
+</html>

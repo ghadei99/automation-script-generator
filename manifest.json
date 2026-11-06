@@ -1,37 +1,27 @@
 {
   "manifest_version": 3,
-  "name": "Selenium Code Generator",
-  "version": "1.0",
-  "description": "Record browser interactions and API calls, then generate Selenium, Cypress, Playwright, and Rest Assured test code.",
+  "name": "Browser Test Recorder",
+  "version": "0.9.0",
+  "description": "Record one site you choose, replay the steps in Chrome, and export Selenium, Playwright, Cypress, or REST Assured.",
   "permissions": [
     "storage",
-    "webNavigation"
+    "scripting",
+    "webNavigation",
+    "tabs",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Selenium Code Generator"
-  },
-  "content_scripts": [
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "intercept.js"
-      ],
-      "run_at": "document_start",
-      "world": "MAIN"
-    },
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "content.js"
-      ],
-      "run_at": "document_start"
-    }
-  ]
+    "default_title": "Browser Test Recorder"
+  }
 }

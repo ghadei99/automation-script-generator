@@ -1,326 +1,68 @@
-# Selenium Script Generator
+# Browser Test Recorder
 
-A Chrome extension (Manifest V3) that records interactions and API calls made
-while browsing a page, then generates test code from that recording:
-Selenium (Java), Cypress (JavaScript), and Playwright (TypeScript) for UI
-automation, plus Rest Assured (Java) for the API calls the page made during
-the same session.
+A Manifest V3 Chrome extension that records one site after you press Start, replays those steps in Chrome, and exports Selenium (Java), Playwright (TypeScript), Cypress (JavaScript), or REST Assured (Java).
 
-## Problem this solves
+Recording is off until you start it. Passwords and token-like fields are stored as named parameters, not as values. Network capture is off unless you opt in, and captured calls are redacted before they are saved.
 
-Writing UI and API test scaffolding by hand is repetitive: find a selector,
-write the interaction, find the request, write the assertion. Existing
-recorder tools solve part of this (see below), but nothing in common use
-solves all three of:
+## Install the unpacked extension
 
-- outputting more than one test framework from a single recording,
-- capturing the API traffic that happened alongside the UI actions and
-  turning it into assertions against the actual responses, and
-- structuring the output as something other than one linear, throwaway
-  script.
+1. Clone this repository:
 
-This extension records once and produces UI automation code (in a choice of
-three frameworks) and API test code together, structured as Page Object
-Model rather than a flat script.
-
-## How this differs from Playwright codegen / Selenium IDE
-
-| | Playwright codegen | Selenium IDE | This extension |
-|---|---|---|---|
-| Output frameworks | Playwright only | Selenium only (a few language bindings) | Selenium, Cypress, or Playwright from the same recording |
-| API/network capture | No | No | Captures `fetch`/`XHR` calls made during the recording and generates Rest Assured tests with assertions from the actual response |
-| Output structure | Flat script | Flat script | Page Object Model: a `RecordedPage` class with one reusable method per distinct element interaction, plus a separate test file |
-| Selector strategy | Auto-generated, framework-internal | Whatever the recorder finds first | Explicit priority order (`data-testid` → ARIA → visible text → `id`/`name` → CSS), with fragile fallback selectors flagged inline in the generated code |
-
-Playwright codegen and Selenium IDE are both good at the thing they do: they
-record one framework's worth of UI steps into a script. This extension is
-aimed at the case where you also want the API assertions from the same
-session, in more than one framework's syntax, without hand-restructuring the
-output afterward into something reusable.
-
-## Installation
-
-1. Clone the repository:
    ```bash
-   git clone https://github.com/ghadei99/Selenium-script-generator.git
+   git clone https://github.com/ghadei99/automation-script-generator.git
+   cd automation-script-generator
    ```
-2. Open the project folder:
-   ```bash
-   cd Selenium-script-generator
-   ```
-3. Load the extension in Chrome:
-   - Open `chrome://extensions/`.
-   - Enable "Developer mode".
-   - Click "Load unpacked" and select the project folder.
 
-## Usage
+2. Open `chrome://extensions`.
+3. Turn on Developer mode.
+4. Choose Load unpacked and select this directory. There is no build step.
 
-1. Click the extension icon to open the recorder popup.
-2. Browse normally: click, type, submit forms, navigate between pages. Any
-   `fetch`/`XHR` calls the page makes are captured alongside your actions.
-3. In the popup, switch between the **UI Automation** and **API Tests**
-   tabs. Under UI Automation, pick a framework from the dropdown, or choose
-   **All** to see all three side by side.
-4. Use **Copy** to copy the code currently shown, or **Clear** to reset the
-   recording and start over.
+Chrome 156 does not load this extension from `--load-extension` on the branded Chrome binary. Developer mode and Load unpacked still work. The acceptance run loads it through the DevTools `Extensions.loadUnpacked` command.
 
-### Example: recording a login
+## Record and replay
 
-Given a recording of visiting a login page, typing a username (into an
-element with `data-testid="username-input"`), typing a password (into an
-element with `aria-label="Password"`), and clicking a "Sign in" button (no
-`data-testid`/ARIA attributes, matched by its visible text) — three
-distinct actions, no repeats — the UI Automation tab produces:
+1. Open the site under test in a normal browser window.
+2. Click the extension icon. A controller window opens. It is not recording yet.
+3. Press Start and allow the site when Chrome asks. `http://localhost` and `http://127.0.0.1` are already permitted so the local demo does not prompt.
+4. Optional: check "Capture API calls" before starting. Leave it off unless you need REST Assured output.
+5. Use the site. Pause, resume, or stop from the controller. Only the tab you started on is recorded, and only while status is Recording.
+6. Edit steps, add assertions, and save the test.
+7. On Run tests, enter any secret parameters for that run. They are not written to extension storage.
+8. Pass, fail, and skipped are reported from the run that just executed. A failed step stays failed. Later steps are skipped.
 
-**Selenium (Java)**
-```java
-// ==== RecordedPage.java ====
-public class RecordedPage {
-    private final WebDriver driver;
+Supported replay steps: navigate, click, double-click, fill text, select, checkbox, radio, submit, wait, assert visible, assert text, assert URL, assert exists.
 
-    public RecordedPage(WebDriver driver) {
-        this.driver = driver;
-    }
+## Demo site
 
-    public void navigateTo(String url) {
-        driver.get(url);
-    }
-
-    public void enterUsernameInput(String value) {
-        driver.findElement(By.cssSelector("[data-testid=\"username-input\"]")).sendKeys(value);
-    }
-
-    public void enterPassword(String value) {
-        driver.findElement(By.cssSelector("[aria-label=\"Password\"]")).sendKeys(value);
-    }
-
-    public void clickSignIn() {
-        driver.findElement(By.xpath("//button[contains(normalize-space(.), \"Sign in\")]")).click();
-    }
-}
-
-// ==== RecordedTest.java ====
-public class RecordedTest {
-    public static void main(String[] args) {
-        WebDriver driver = new ChromeDriver();
-        RecordedPage page = new RecordedPage(driver);
-
-        page.navigateTo("https://example.com/login");
-        page.enterUsernameInput("alice");
-        page.enterPassword("hunter2");
-        page.clickSignIn();
-    }
-}
+```bash
+npm install
+npm run demo
 ```
 
-**Playwright (TypeScript)**
-```ts
-// ==== RecordedPage.ts ====
-import { Page } from '@playwright/test';
+Open `http://127.0.0.1:4173`. The dummy account is username `demo` and password `demo123`. The password field is masked in the recording. Invalid credentials show "Invalid credentials". An empty username shows "Username is required".
 
-export class RecordedPage {
-  constructor(private page: Page) {}
+## Tests
 
-  async navigateTo(url: string) {
-    await this.page.goto(url);
-  }
-
-  async enterUsernameInput(value: string) {
-    await this.page.locator('[data-testid="username-input"]').fill(value);
-  }
-
-  async enterPassword(value: string) {
-    await this.page.locator('[aria-label="Password"]').fill(value);
-  }
-
-  async clickSignIn() {
-    await this.page.getByText("Sign in").click();
-  }
-}
-
-// ==== recorded.spec.ts ====
-import { test } from '@playwright/test';
-import { RecordedPage } from './RecordedPage';
-
-test('replays the recorded actions', async ({ page: pwPage }) => {
-  const page = new RecordedPage(pwPage);
-  await page.navigateTo("https://example.com/login");
-  await page.enterUsernameInput("alice");
-  await page.enterPassword("hunter2");
-  await page.clickSignIn();
-});
+```bash
+npm test
+node test/acceptance.mjs
 ```
 
-**Cypress (JavaScript)**
-```js
-// ==== RecordedPage.js ====
-class RecordedPage {
-  navigateTo(url) {
-    cy.visit(url);
-    return this;
-  }
+`npm test` runs the unit tests in Node. `node test/acceptance.mjs` launches the installed Google Chrome, loads the extension, and drives the demo. It needs permission to launch Chrome.
 
-  enterUsernameInput(value) {
-    cy.get('[data-testid="username-input"]').clear().type(value);
-    return this;
-  }
+## Code export
 
-  enterPassword(value) {
-    cy.get('[aria-label="Password"]').clear().type(value);
-    return this;
-  }
+The Export view generates the four existing formats from the same step list. Secret inputs are emitted as environment parameters (`TEST_PASSWORD`, `Cypress.env`, `System.getenv`), not as literals. Playwright is the output intended to drop into a `@playwright/test` project. This repo's checks generate that file and assert its shape. They do not launch the Playwright runner.
 
-  clickSignIn() {
-    cy.contains('button', "Sign in").click();
-    return this;
-  }
-}
+## AI proposals
 
-export default RecordedPage;
+The AI assistant in mock mode builds a proposed plan on this machine. It does not call a provider. Selectors are copied from the open page when one element matches. If the page was not inspected, the step has no selector. The plan is labeled proposed. Approve and save it before running. A run is the only thing that can pass or fail.
 
-// ==== recorded.cy.js ====
-import RecordedPage from './RecordedPage';
+Live mode calls only a proxy URL you save in Settings. The extension has no provider key. `server/ai-proxy.mjs` is a reference proxy that exits unless `PROXY_AUTH_TOKEN` and `AI_API_KEY` are set. It is not deployed.
 
-describe('Recorded session', () => {
-  it('replays the recorded actions', () => {
-    const page = new RecordedPage();
-    page.navigateTo("https://example.com/login");
-    page.enterUsernameInput("alice");
-    page.enterPassword("hunter2");
-    page.clickSignIn();
-  });
-});
-```
+## Current limits
 
-If the same element is interacted with more than once in a recording (e.g.
-the same button clicked twice), it produces one method, called twice — not
-two duplicate method definitions.
-
-If no `data-testid`, ARIA attribute, visible text, `id`, or `name` is
-available for an element, the generator falls back to a bare tag-name CSS
-selector and marks every line using it, in every framework, with an inline
-comment: `// FRAGILE SELECTOR: ... - verify manually`.
-
-### Example: API Tests tab (Rest Assured)
-
-If the page made a `GET /api/session` call during the recording that
-returned `{"userId": 42, "name": "Alice", "roles": ["admin", "user"]}` with
-a `200` status and a JSON content type:
-
-```java
-given()
-.when()
-    .get("https://example.com/api/session")
-.then()
-    .statusCode(200)
-    .contentType(containsString("application/json"))
-    .body("userId", equalTo(42))
-    .body("name", equalTo("Alice"))
-    .body("roles.size()", equalTo(2));
-```
-
-Assertions are derived from the actual response body: scalar fields become
-`equalTo()` checks, arrays become `.size()` checks, and nested objects
-become `notNullValue()` checks. This isn't a generic "assert 200" stub — the
-recorded response's structure is not just being echoed back, it's read at
-generation time.
-
-## Architecture
-
-### Event capture
-
-`content.js` is injected into every page (`document_start`, isolated world)
-and listens for `click`, `input`, `change` (radio/checkbox), `submit`, and
-`dblclick` on `document`. Each event is turned into a framework-agnostic
-action object — `{ type, selector, value?, checked? }` — and appended to
-`chrome.storage.local` under `recordedActions`. The append is a
-read-modify-write against storage on every event rather than an in-memory
-array, because content scripts are re-created on every page load; an
-in-memory array would be wiped by the very first navigation.
-
-The selector attached to each action is a descriptor, not a rendered
-selector string: `{ strategy, value, fragile }`, where `strategy` is one of
-`testid` / `ariaLabel` / `role` / `text` / `id` / `name` / `css`, tried in
-that order (see `getSelectorDescriptor()` in `content.js`). Keeping the
-descriptor framework-agnostic is what makes it possible to render three
-different selector syntaxes from the same recording without re-recording.
-
-### API capture
-
-`intercept.js` runs as a second content script declared with `"world":
-"MAIN"` in `manifest.json`, so it executes in the page's own JavaScript
-context rather than the isolated content-script sandbox. It wraps
-`window.fetch` and `XMLHttpRequest.prototype.open`/`send` to capture method,
-URL, request body, response status, response content-type, and response
-body for every call the page's own scripts make, then relays each capture
-to `content.js` via a `CustomEvent` (`__selRecorderApiCall`) — the isolated
-and main worlds don't share objects directly, so the payload is JSON-encoded
-across that boundary. `content.js` stores these under a separate
-`recordedApiCalls` key.
-
-This was chosen over `chrome.webRequest` (which can't see response bodies at
-all) and the `chrome.debugger` API (which can, but requires a much broader
-permission and shows a persistent "this extension is debugging your
-browser" banner in Chrome — a poor fit for something meant to run
-continuously in the background). The tradeoff is that only `fetch`/`XHR`
-traffic is captured, not e.g. requests issued by a service worker directly;
-that's judged acceptable since API test generation only cares about the
-calls the recorded page code itself makes.
-
-### Navigation tracking
-
-Content scripts alone can't reliably observe SPA client-side routing (there
-is no DOM event that fires on `history.pushState`/`replaceState` that a
-content script can listen for without the page cooperating). Instead,
-`background.js` uses `chrome.webNavigation.onCommitted` (full page loads,
-reloads, link-driven navigations) and `chrome.webNavigation.onHistoryStateUpdated`
-(SPA route changes), both filtered to the top-level frame, and appends a
-`{ type: 'navigate', url }` action directly to the same `recordedActions`
-storage array content.js writes to — deduplicated against consecutive
-identical URLs.
-
-### Code generation
-
-`codegen.js` is loaded by `popup.html` and exports one render function per
-output format (`renderSelenium`, `renderCypress`, `renderPlaywright`,
-`renderRestAssured`). All four read from the same stored action/API-call
-arrays; none of them touch the DOM or `chrome.*` APIs, so they're pure
-functions of the recorded data and can be tested standalone (as most of this
-was during development, since the popup's own `chrome.storage` dependency
-makes it awkward to drive interactively outside a real installed
-extension).
-
-`renderSelenium`/`renderCypress`/`renderPlaywright` share a
-`buildPageModel()` step that turns the flat, chronological action list into
-a page-object model: a map from `(action type, selector)` to one reusable
-method (deduplicating repeated interactions with the same element), plus the
-ordered list of calls the test file makes into those methods. Each
-framework then has its own per-method renderer (selector syntax and
-API differ — e.g. Selenium has no native "set checkbox to state X", so its
-checkbox method reads `isSelected()` and only clicks if the state doesn't
-already match, whereas Cypress/Playwright's `check()`/`uncheck()` are
-idempotent already) but all three consume the same `{ methods, calls }`
-structure.
-
-`renderRestAssured` is independent of the page-object step — API calls
-don't have a "reusable method" abstraction that fits the same shape as UI
-interactions here — and instead maps each captured call straight to one
-`given().when().then()` block, deriving assertions from the parsed JSON
-response.
-
-## Known limitations
-
-- Recording is global and always-on for any page the content scripts are
-  injected into — there's no start/stop toggle for a specific recording
-  session; `Clear` resets everything captured so far.
-- Text-based selectors (the third priority tier) are capped at 60 characters
-  and matched via `contains()`/`cy.contains()`/`getByText()`, so they can
-  still match more than one element on the page; there's no attempt to
-  verify uniqueness at record time.
-- API capture only sees `fetch`/`XHR` traffic issued by the page's own
-  scripts, not requests from service workers or other extensions.
-- Checkbox/radio "set to state X" replay assumes the target element's
-  current state at replay time is discoverable the same way it was at
-  record time; this holds for standard HTML form controls but not for
-  custom widgets that fake a checkbox's appearance without an underlying
-  `<input>`.
+- Failure screenshots are not available on Chrome 156 with site-scoped host permissions. `captureVisibleTab` returns "Either the '<all_urls>' or 'activeTab' permission is required." The run still stores the failing step, message, expected value, and actual value. The extension does not invent a screenshot.
+- Replay cannot drive `chrome://` pages, the Chrome Web Store, or other non-http(s) URLs. Start tells you that.
+- A full Reload from `chrome://extensions` in the automated session blocks the extension page afterwards. The acceptance run instead terminates the service worker and reads the saved test back through a new one.
+- AI output is data for the local step runner. The extension does not evaluate model text as JavaScript.
