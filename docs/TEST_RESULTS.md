@@ -275,3 +275,27 @@ The real provider was not called. `PROXY_AUTH_TOKEN` and `AI_API_KEY` are unset,
 `node test/persistence.mjs`: product save, Chrome restart, and reopened steps passed. The extensions Reload check is still the debug-session limitation.
 
 Chrome suites were run one after another.
+
+## Recorder start, 2026-11-07
+
+Branch `feature/fix-recorder-start`, from `feature/live-ai-beta` at `e9337a4`.
+
+A second Start failed with `Duplicate script ID 'asg-recorder'` because Stop tried to unregister `asg-network` when network capture was off. Chrome rejects that whole request and leaves `asg-recorder` registered. Start now queries the registered scripts, updates the recorder when the origin changes, and registers an id only when it is missing.
+
+`node test/recorder-start.mjs` in Chrome/156.0.8078.80, extension `nicdpehkdfphgdnmbhmmfkoiaeicmcia`: 13/13 passed. Two demo origins, `http://127.0.0.1:58061` and `http://127.0.0.1:58062`, stood in for the two sites. Cancel kept the first draft. The second Start recorded only `http://127.0.0.1:58062/*`. A click on the first site was not stored. One click produced one step. Stop and start, pause and resume, two overlapping starts, a saved test, navigation to `/app.html`, opt-in API capture, a service-worker restart, and a Chrome restart all started recording. The Chrome restart origin was `http://127.0.0.1:58085`.
+
+`npm test`: 22 passed, 0 failed, 1 skipped. The skipped test is the live provider, still UNVERIFIED.
+
+`node test/acceptance.mjs`: 16/16 passed. Demo port `58111`.
+
+`node test/ai-login.mjs`: 5/5 passed.
+
+`node test/screenshot.mjs`: 5 passed, 0 failed. No image was invented.
+
+`node test/playwright-export.mjs`: the success spec passed. The deliberate failure expected `http://127.0.0.1:58171/not-the-app` and received `http://127.0.0.1:58171/app.html`. The password was absent.
+
+`node test/ai-flow.mjs`: the combined run timed out once while Chrome was already busy. Run on its own, 4/4 passed.
+
+`node test/shop.mjs`: 5 passed, 0 failed. Demo port `58222`.
+
+`node test/persistence.mjs`: product save, Chrome restart, and reopened steps passed. Demo port `58247`. The extensions Reload check is still the debug-session limitation.
