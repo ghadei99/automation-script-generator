@@ -303,6 +303,7 @@ async function executeStepOnTab(tabId, step, timeoutMs, params) {
     throw Object.assign(new Error(response.message || 'Step failed'), {
       expected: response.expected,
       actual: response.actual,
+      repairs: response.repairs,
     });
   }
   if (['click', 'dblclick', 'submit'].includes(step.type)) {
