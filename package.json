@@ -8,9 +8,14 @@
     "demo": "node demo/server.mjs",
     "test:acceptance": "node test/acceptance.mjs",
     "test:persistence": "node test/persistence.mjs",
-    "test:ai": "node test/ai-flow.mjs"
+    "test:ai": "node test/ai-flow.mjs",
+    "test:ai-login": "node test/ai-login.mjs",
+    "test:screenshot": "node test/screenshot.mjs",
+    "test:playwright": "node test/playwright-export.mjs",
+    "test:shop": "node test/shop.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "jsdom": "^25.0.1",
     "puppeteer-core": "^24.15.0"
   }

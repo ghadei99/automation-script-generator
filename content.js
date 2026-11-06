@@ -99,12 +99,17 @@
     const el = targetElement(event, 'click');
     if (!el || !el.matches) return;
     if (el.matches('input[type="checkbox"], input[type="radio"]')) return;
-    emit(buildStep(el, 'click'));
+    emit(stamp(buildStep(el, 'click'), event));
+  }
+
+  function stamp(step, event) {
+    if (step && event && Number.isFinite(event.timeStamp)) step.recordedAt = event.timeStamp;
+    return step;
   }
 
   function onDblClick(event) {
     if (!event.isTrusted || !state.recording) return;
-    emit(buildStep(targetElement(event, 'dblclick'), 'dblclick'));
+    emit(stamp(buildStep(targetElement(event, 'dblclick'), 'dblclick'), event));
   }
 
   function onInput(event) {

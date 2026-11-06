@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
@@ -200,8 +201,10 @@ test('mock AI plans are schema-valid suggestions and reject executable fields', 
   assert.equal(plan.cases.length, 2);
   assert.equal(JSON.stringify(plan).includes('demo123'), false);
   assert.equal(JSON.stringify(plan).includes('data-testid'), false);
-  assert.equal(plan.cases[0].steps.some((step) => step.secret && step.paramName === 'password'), true);
-  assert.equal(plan.cases[0].steps.some((step) => step.selector), false);
+  const validCase = plan.cases.find((item) => item.steps.some((step) => step.paramName === 'password'));
+  assert.equal(plan.cases[0].name.includes('Invalid'), true);
+  assert.ok(validCase);
+  assert.equal(validCase.steps.some((step) => step.selector), false);
   assert.throws(() => schema.validatePlan({ ...plan, script: 'alert(1)' }), /executable/i);
   assert.throws(() => schema.validatePlan({
     title: 'bad',
@@ -248,6 +251,46 @@ test('mock AI uses selectors only when the open page has that element', () => {
   assert.equal(playwright.includes('demo123'), false);
 });
 
+test('the login prompt proposes invalid then success, and edits do not swallow locators', () => {
+  const evidence = {
+    pageUrl: 'http://127.0.0.1:4173/',
+    items: [
+      { tag: 'input', type: 'text', testid: 'username', id: 'username', name: 'username', label: 'Username', text: '', role: '' },
+      { tag: 'input', type: 'password', testid: 'password', id: 'password', name: 'password', label: 'Password', text: '', role: '' },
+      { tag: 'button', type: 'submit', testid: 'submit', id: '', name: '', label: '', text: 'Sign in', role: '' },
+      { tag: 'p', type: '', testid: 'error', id: 'error', name: '', label: '', text: '', role: '' },
+    ],
+  };
+  const plan = ai.mockPlan('Test the login form, verify invalid credentials show an error, then test a successful login.', { evidence });
+  assert.equal(plan.cases.length, 2);
+  assert.match(plan.cases[0].name, /Invalid/);
+  assert.match(plan.cases[1].name, /Valid/);
+  assert.equal(plan.cases[1].steps.find((step) => step.type === 'assertUrl').expected, '');
+  assert.equal(JSON.stringify(plan).includes('/app'), false);
+  const errorStep = plan.cases[0].steps.find((step) => step.type === 'assertText');
+  ai.applyStepEdit(errorStep, 'Assert text equals "Invalid credentials" on data-testid=error');
+  assert.equal(errorStep.expected, 'Invalid credentials');
+  assert.equal(errorStep.selector.value, 'error');
+  const userStep = plan.cases[1].steps.find((step) => step.type === 'input' && !step.secret);
+  ai.applyStepEdit(userStep, 'Enter "demo" into data-testid=username');
+  assert.equal(userStep.value, 'demo');
+  assert.equal(userStep.selector.value, 'username');
+  const urlStep = plan.cases[1].steps.find((step) => step.type === 'assertUrl');
+  ai.applyStepEdit(urlStep, 'Assert URL equals "http://127.0.0.1:4173/app.html"');
+  assert.equal(urlStep.expected, 'http://127.0.0.1:4173/app.html');
+  const exported = code.renderPlaywright(plan.cases[1].steps);
+  assert.match(exported, /getByTestId\("username"\)/);
+  assert.match(exported, /TEST_PASSWORD/);
+  assert.equal(exported.includes('demo123'), false);
+});
+
+test('the live proxy exits unless its own credentials are set', () => {
+  const result = spawnSync(process.execPath, ['server/ai-proxy.mjs'], { encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.match(`${result.stderr}`, /PROXY_AUTH_TOKEN/);
+  assert.match(`${result.stderr}`, /AI_API_KEY/);
+});
+
 test('all four generators keep the page-object flow and parameterize secrets', () => {
   const actions = [
     { type: 'navigate', url: 'https://example.com/login' },
@@ -291,6 +334,83 @@ test('all four generators keep the page-object flow and parameterize secrets', (
   assert.equal(api.includes('secret-token'), false);
   assert.match(api, /equalTo\("Ada"\)/);
   assert.match(api, /Skipped unsupported HTTP method/);
+});
+
+test('generated names stay short, repeated clicks drop, and validations remain', () => {
+  const dom = new JSDOM('<!doctype html><button>Add to cart</button><div><span>x</span></div>');
+  const button = selectors.describeElement(dom.window.document.querySelector('button'), dom.window.document);
+  const span = selectors.describeElement(dom.window.document.querySelector('span'), dom.window.document);
+  assert.equal(button.strategy, 'role');
+  assert.equal(button.fragile, false);
+  assert.equal(span.strategy, 'css');
+  assert.equal(span.fragile, true);
+  assert.match(span.warning, /structural CSS/);
+  const ids = sequentialIds();
+  let session = reducer.createSession({
+    tabId: 7,
+    origin: 'https://shop.example',
+    url: 'https://shop.example/catalog',
+    networkCapture: false,
+  }, ids);
+  const add = { strategy: 'testid', value: 'add-cart', matchCount: 1 };
+  session = reducer.reduceEvent(session, { kind: 'ui', step: { type: 'click', selector: add, recordedAt: 15 } }, ids);
+  session = reducer.reduceEvent(session, { kind: 'ui', step: { type: 'click', selector: add, recordedAt: 15 } }, ids);
+  session = reducer.reduceEvent(session, { kind: 'ui', step: { type: 'click', selector: add, recordedAt: 480 } }, ids);
+  const recordedClicks = session.steps.filter((step) => step.type === 'click');
+  assert.equal(recordedClicks.length, 2);
+  assert.deepEqual(recordedClicks.map((step) => step.recordedAt), [15, 480]);
+  const model = code.buildPageModel([
+    { type: 'click', selector: add, recordedAt: 15 },
+    { type: 'click', selector: add, recordedAt: 15 },
+    { type: 'click', selector: add, recordedAt: 480 },
+    { type: 'navigate', url: 'https://shop.example/catalog' },
+    { type: 'navigate', url: 'https://shop.example/product' },
+    { type: 'navigate', url: 'javascript:alert(1)' },
+    { type: 'click', selector: { strategy: 'css', value: 'main > div:nth-of-type(2) > span:nth-of-type(3)', fragile: true } },
+    { type: 'input', selector: { strategy: 'testid', value: 'password' }, secret: true, paramName: 'password' },
+    { type: 'assertText', selector: { strategy: 'testid', value: 'cart' }, expected: 'Notebook is in the cart', match: 'exact' },
+    { type: 'assertUrl', expected: 'https://shop.example/product', match: 'exact' },
+  ]);
+  const names = model.calls.map((call) => call.name);
+  assert.deepEqual(names.filter((name) => name.startsWith('click')), ['clickAddCart', 'clickAddCart', 'clickElement']);
+  const keptOnPurpose = code.buildPageModel([
+    { type: 'click', selector: add },
+    { type: 'click', selector: add },
+  ]);
+  assert.equal(keptOnPurpose.calls.length, 2);
+  assert.deepEqual(model.calls.filter((call) => call.name === 'navigateTo').map((call) => call.args[0]), [
+    'https://shop.example/catalog',
+    'https://shop.example/product',
+  ]);
+  assert.equal(names.includes('assertTextCart'), true);
+  assert.equal(names.includes('assertUrl'), true);
+  const playwright = code.renderPlaywright([
+    { type: 'navigate', url: 'https://shop.example/catalog' },
+    { type: 'navigate', url: 'https://shop.example/product' },
+    { type: 'input', selector: { strategy: 'testid', value: 'password' }, secret: true, paramName: 'password' },
+    { type: 'assertText', selector: { strategy: 'testid', value: 'cart' }, expected: 'Notebook is in the cart', match: 'exact' },
+  ]);
+  assert.match(playwright, /toHaveText/);
+  assert.match(playwright, /Notebook is in the cart/);
+  assert.match(playwright, /TEST_PASSWORD/);
+  assert.equal(playwright.includes('demo123'), false);
+  assert.equal(playwright.includes('javascript:'), false);
+  assert.match(playwright, /https:\/\/shop\.example\/catalog/);
+  assert.match(playwright, /https:\/\/shop\.example\/product/);
+  const page = code.renderPlaywright([
+    { type: 'click', selector: { strategy: 'testid', value: 'save', matchCount: 1 } },
+    { type: 'click', selector: { strategy: 'role', value: 'button', name: 'Save', matchCount: 1 } },
+    { type: 'click', selector: { strategy: 'css', value: 'main > div:nth-of-type(4)', uniqueCss: 'main > div:nth-of-type(4)', fragile: true, warning: 'No stable selector was unique. Using a structural CSS path.' } },
+    { type: 'click', selector: { strategy: 'testid', value: 'save', matchCount: 2, ambiguous: true, uniqueCss: 'form > button:nth-of-type(2)' } },
+  ]);
+  const methodNames = [...page.matchAll(/async (click\w+)\(/g)].map((match) => match[1]);
+  assert.deepEqual(methodNames, ['clickSave', 'clickSave2', 'clickElement', 'clickElement2']);
+  assert.equal(new Set(methodNames).size, methodNames.length);
+  assert.match(page, /async clickSave\(\) \{\n\s+await this\.page\.getByTestId\("save"\)\.click/);
+  assert.match(page, /async clickSave2\(\) \{\n\s+await this\.page\.getByRole\("button", \{ name: "Save", exact: true \}\)\.click/);
+  assert.match(page, /async clickElement\(\) \{\n\s+await this\.page\.locator\("main > div:nth-of-type\(4\)"\)\.click[\s\S]*structural CSS path/);
+  assert.match(page, /async clickElement2\(\) \{\n\s+await this\.page\.locator\("form > button:nth-of-type\(2\)"\)\.click[\s\S]*structural CSS path/);
+  assert.equal([...page.matchAll(/getByTestId\("save"\)/g)].length, 1);
 });
 
 function sequentialIds() {

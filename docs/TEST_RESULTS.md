@@ -108,3 +108,122 @@ The mock plan was labeled proposed. Its selectors were `data-testid=username`, `
 `node test/acceptance.mjs` after these changes: 16 passed, 0 failed. The earlier baseline was not replaced by a weaker check.
 
 Live AI was not called. No provider key is configured. Mock mode is the feature that ran. Screenshot: `test-results/ai-failed-run.png`.
+
+## Login plan executed in Chrome, 2026-11-06
+
+Branch started from merged `master` at `6bb3e23`.
+
+Commands:
+
+```bash
+npm test
+node test/ai-login.mjs
+node test/acceptance.mjs
+```
+
+`npm test`: 16 passed, 0 failed. This includes the plan edit checks and `server/ai-proxy.mjs` exiting when `PROXY_AUTH_TOKEN` and `AI_API_KEY` are unset.
+
+`node test/ai-login.mjs`: 5 passed, 0 failed. Chrome launched the extension against the local demo. The prompt was "Test the login form, verify invalid credentials show an error, then test a successful login."
+
+| Check | Result | Evidence |
+|---|---|---|
+| Mock plan | Pass | Invalid case, then success case. Selectors were `data-testid` username, password, submit, and error from the open page. The success URL was empty. `/app` was not invented |
+| Correct assertions | Pass | `navigate, input, input, click, assertText, assertUrl` all passed after the expected error was set to `Invalid credentials` |
+| Incorrect assertion | Pass as a real failure | Expected `Not the real error`. Actual `Invalid credentials`. Later steps skipped. Evidence: `Either the '<all_urls>' or 'activeTab' permission is required.` No image was stored |
+| Successful login | Pass | Same step list passed after the username was set to `demo` and the expected URL was set to the demo app. The page text was `Welcome, Demo` |
+| Playwright export | Pass | The approved success spec imports `@playwright/test`, uses `getByTestId("username")` and `TEST_PASSWORD`, includes the approved app URL, and does not contain `demo123`. Extension storage also did not contain `demo123` or `not-the-password` |
+
+`node test/acceptance.mjs`: 16 passed, 0 failed.
+
+Live mode was not called. The proxy was not started. The Playwright test runner was not used to execute the exported file. Screenshot: `test-results/ai-login-failed.png`.
+
+## Release candidate, 2026-11-06
+
+Branch `feature/ai-login-execution`. Chrome/156.0.8078.80.
+
+Commands:
+
+```bash
+npm test
+node test/ai-login.mjs
+node test/acceptance.mjs
+node test/screenshot.mjs
+node test/playwright-export.mjs
+```
+
+`npm test`: 18 passed, 0 failed, 1 skipped. The skip is `test/live-ai.test.mjs`, because `PROXY_AUTH_TOKEN` and `AI_API_KEY` are not set. The same run includes the four code generators and the local proxy checks in `test/proxy.test.mjs`.
+
+`node test/ai-login.mjs`: 5 passed, 0 failed. Invalid credentials passed. The wrong expected text failed with actual `Invalid credentials` and later steps skipped. The approved success login passed and the page showed `Welcome, Demo`. The export and extension storage did not contain `demo123` or `not-the-password`.
+
+`node test/acceptance.mjs`: 16 passed, 0 failed.
+
+`node test/screenshot.mjs`: 5 passed, 0 failed.
+
+| Scenario | Result | Evidence |
+|---|---|---|
+| Failed assertion | Pass | No image stored. `screenshotError` starts with `Screenshot unavailable` and includes Chrome's `activeTab` / `<all_urls>` message |
+| Results view | Pass | The text `Screenshot unavailable` and `activeTab` were visible. No failure image was shown |
+| Navigation | Pass | The stored capture grant was marked `cleared: navigation`, and the error says the page navigated after the icon click |
+| Browser page | Pass | `Screenshot unavailable. This page cannot be scripted (chrome:// pages are blocked).` |
+| Missing origin | Pass | `Screenshot unavailable. Site access for https://example.com is missing or was revoked.` |
+
+No JPEG was returned. The automated session cannot click the toolbar icon, which is the invocation Chrome requires. `<all_urls>` was not added.
+
+`node test/playwright-export.mjs`: the official Playwright runner executed the exported success login. `recorded.spec.ts` passed. `recorded-fail.spec.ts` failed on `toHaveURL`: expected `http://127.0.0.1:52379/not-the-app`, received `http://127.0.0.1:52379/app.html`. The runner output and the written files did not contain `demo123`. `TEST_PASSWORD` was supplied only as an environment variable.
+
+Mock AI passed inside `npm test` and `node test/ai-login.mjs`. Live AI was not called. The proxy tests proved it refuses to listen without its credentials, rejects a non-local provider URL, requires the bearer token, drops password values from page evidence, rejects a plan that contains `script`, returns 429 after 10 requests in a minute, and does not put the provider key in its responses or logs. The proxy binds to `127.0.0.1` and is not deployed.
+
+## UI and code generation, 2026-11-06
+
+Branch `feature/ui-codegen-quality`, started from `03cd199`.
+
+Commands:
+
+```bash
+npm test
+node test/shop.mjs
+node test/acceptance.mjs
+node test/ai-login.mjs
+node test/screenshot.mjs
+node test/playwright-export.mjs
+node test/ai-flow.mjs
+node test/persistence.mjs
+```
+
+`npm test`: 19 passed, 0 failed, 1 skipped. The skip is still the live provider smoke test. The new unit test checks short method names, one dropped repeated click, both real navigations, no `javascript:` URL, the cart assertion, and `TEST_PASSWORD`.
+
+`node test/shop.mjs`: 5 passed, 0 failed. Chrome recorded the local Demo Web Shop, from the catalog to the notebook page, then Add to cart. Replay passed and the page showed `Notebook is in the cart`. The step list used short titles such as `Click add-cart`, numbered from `01`, and the editor showed `Strategy: testid` plus the CSS path. The AI panel showed `Mock AI`. The official Playwright runner then passed the exported spec. `demo123` was not in the export or the runner output.
+
+`node test/acceptance.mjs`: 16 passed, 0 failed.
+
+`node test/ai-login.mjs`: 5 passed, 0 failed.
+
+`node test/screenshot.mjs`: 5 passed, 0 failed.
+
+`node test/playwright-export.mjs`: the login export passed. The wrong URL assertion failed with expected `/not-the-app` and received `/app.html`. The password was absent from the output and files.
+
+`node test/ai-flow.mjs`: 4 passed, 0 failed.
+
+`node test/persistence.mjs`: the UI save, Chrome restart, and reopened step list passed. The extensions-page Reload check remains the known debug-session limitation and is not a product failure.
+
+## Pre-merge check, 2026-11-06
+
+`03cd199` is an ancestor of this branch. `master` (`6bb3e23`) has no commits that this branch lacks. Nothing was merged.
+
+A click is removed only when the next click has the same selector and the same recorder timestamp. Two clicks with different timestamps, and two clicks with no timestamp, both stay. A non-unique semantic locator is exported as its structural CSS path with the structural warning. Method names that would collide are suffixed (`clickSave`, `clickSave2`).
+
+`npm test`: 19 passed, 0 failed, 1 skipped (live provider, secrets unset).
+
+`node test/acceptance.mjs`: 16/16 passed.
+
+`node test/ai-login.mjs`: 5/5 passed.
+
+`node test/screenshot.mjs`: 5 passed, 0 failed. No image was invented.
+
+`node test/playwright-export.mjs`: success spec passed. The deliberate failure expected `http://127.0.0.1:55122/not-the-app` and received `http://127.0.0.1:55122/app.html`. The password was absent.
+
+`node test/ai-flow.mjs`: 4/4 passed.
+
+`node test/shop.mjs`: 5 passed, 0 failed.
+
+`node test/persistence.mjs`: product save, Chrome restart, and reopened steps passed. The extensions Reload check is still the debug-session limitation.
