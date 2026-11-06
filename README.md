@@ -56,7 +56,7 @@ The Export view generates the four existing formats from the same step list. Sec
 
 ## AI proposals
 
-The AI assistant in mock mode builds a proposed plan on this machine. It does not call a provider. The plan is labeled proposed, can be edited, and is not a passing test until you run it.
+The AI assistant in mock mode builds a proposed plan on this machine. It does not call a provider. Selectors are copied from the open page when one element matches. If the page was not inspected, the step has no selector. The plan is labeled proposed. Approve and save it before running. A run is the only thing that can pass or fail.
 
 Live mode calls only a proxy URL you save in Settings. The extension has no provider key. `server/ai-proxy.mjs` is a reference proxy that exits unless `PROXY_AUTH_TOKEN` and `AI_API_KEY` are set. It is not deployed.
 

@@ -12,7 +12,7 @@ Command:
 npm test
 ```
 
-Result: 13 passed, 0 failed.
+Result on the later run below: 14 passed, 0 failed. The first recorded run was 13 passed.
 
 The file is `test/core.test.mjs` plus `test/demo.test.mjs`. Covered behavior:
 
@@ -68,3 +68,43 @@ On this Chrome build, `chrome.tabs.captureVisibleTab` fails even when `chrome.pe
 - The Playwright, Selenium, Cypress, and REST Assured files were not executed in those runners. Unit tests and the in-Chrome replay cover the step list those files are generated from.
 - `server/ai-proxy.mjs` was not started. No provider key is configured.
 - A click on Reload inside `chrome://extensions` was tried separately. After that click, opening the extension page returned `net::ERR_BLOCKED_BY_CLIENT`. The acceptance run therefore proves service-worker restart, not that button.
+
+## Persistence, 2026-11-06
+
+Command:
+
+```bash
+node test/persistence.mjs
+```
+
+Chrome/156.0.8078.80. Extension id `nicdpehkdfphgdnmbhmmfkoiaeicmcia` before and after the restart.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Save through the extension UI | Pass | Start, Stop, name "Persist suite", Save test. Stored step `navigate:http://127.0.0.1:63796/` |
+| Chrome process restart | Pass | Same extension id. 1 step restored. Load into draft showed the saved URL |
+| Reload button inside this debug session | Harness limitation | Reopened page was `chrome-error://chromewebdata/` for `chrome-extension://nicdpehkdfphgdnmbhmmfkoiaeicmcia/popup.html`. No `chrome.storage` API. The same profile had already restored the test after a full process restart, so this is the debug loader blocking the page, not a missing write |
+
+The Start button had been disabled on every permitted page because an empty block reason was stored as the disabled attribute. That is fixed. The persistence run used the enabled button.
+
+Screenshots from that run: `test-results/persistence-saved.png` and `test-results/persistence-restarted.png`.
+
+## AI proposal executed in Chrome
+
+Commands:
+
+```bash
+npm test
+node test/ai-flow.mjs
+node test/acceptance.mjs
+```
+
+`npm test`: 14 passed, 0 failed.
+
+`node test/ai-flow.mjs`: 4 passed, 0 failed. Prompt: "Test the login page with invalid credentials, verify the error message, and check navigation."
+
+The mock plan was labeled proposed. Its selectors were `data-testid=username`, `data-testid=password`, `data-testid=submit`, and `data-testid=error` from the open demo page. It did not contain `data-testid=welcome` or `/app`. The password step was `{{wrongPassword}}` with no password value. After editing the expected error text to `Wrong message` and choosing Approve and save, the run failed. The page showed expected `Wrong message` and actual `Invalid credentials`. Playwright, Selenium, Cypress, and REST Assured were generated from those saved steps. The Playwright output contained `getByTestId("error")` and `TEST_WRONGPASSWORD`, and did not contain the typed password.
+
+`node test/acceptance.mjs` after these changes: 16 passed, 0 failed. The earlier baseline was not replaced by a weaker check.
+
+Live AI was not called. No provider key is configured. Mock mode is the feature that ran. Screenshot: `test-results/ai-failed-run.png`.

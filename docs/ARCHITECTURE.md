@@ -38,7 +38,7 @@ Results, saved tests, and the draft session live in `chrome.storage.local`. Ther
 
 ## AI
 
-Mock mode in `lib/ai.js` returns a plan that `validatePlan` accepts. Selectors in that plan are guesses and are marked proposed. Saving a plan creates a test with `source: "ai"`. Nothing runs it automatically.
+Mock mode in `lib/ai.js` returns a plan that `validatePlan` accepts. Before that, the service worker reads a short element list from the open tab: tag, test id, id, name, label, and visible text. It does not read field values. A selector is attached only when one of those elements matches. Any other selector is removed. Saving a plan creates a test with `source: "ai"`. Nothing runs it automatically.
 
 Live mode POSTs `{ prompt, targetOrigin }` to the URL in settings, with an optional bearer token stored only in extension storage. The response must pass the same schema. The reference proxy in `server/ai-proxy.mjs` refuses to listen without `PROXY_AUTH_TOKEN` and `AI_API_KEY`. Remote model text is not evaluated. Replay only executes the allowlisted step types.
 
