@@ -74,6 +74,70 @@ function selectorText(selector) {
   return selector.value || selector.uniqueCss || selector.strategy;
 }
 
+const STEP_ICONS = {
+  navigate: '→',
+  click: '●',
+  dblclick: '●●',
+  input: 'T',
+  select: '▾',
+  checkbox: '☑',
+  radio: '◉',
+  submit: '↵',
+  wait: '…',
+  assertVisible: '✓',
+  assertExists: '✓',
+  assertText: '✓',
+  assertUrl: '✓',
+};
+
+function stepIcon(type) {
+  return STEP_ICONS[type] || '·';
+}
+
+function humanTarget(step) {
+  const selector = step.selector || {};
+  if (selector.strategy === 'role' && selector.name) return selector.name;
+  if (['testid', 'id', 'name', 'text', 'ariaLabel', 'label', 'placeholder'].includes(selector.strategy) && selector.value) {
+    return selector.value;
+  }
+  if (step.textSnapshot) return step.textSnapshot;
+  return 'element';
+}
+
+function stepTitle(step) {
+  const target = humanTarget(step);
+  switch (step.type) {
+    case 'navigate': return `Open ${step.url || ''}`.trim();
+    case 'click': return `Click ${target}`;
+    case 'dblclick': return `Double-click ${target}`;
+    case 'input': return step.secret ? `Enter {{${step.paramName || 'secret'}}}` : `Enter "${step.value || ''}"`;
+    case 'select': return `Choose "${step.value || ''}"`;
+    case 'checkbox': return `${step.checked ? 'Check' : 'Uncheck'} ${target}`;
+    case 'radio': return `Choose ${target}`;
+    case 'submit': return `Submit ${target}`;
+    case 'wait': return `Wait for ${target}`;
+    case 'assertVisible': return `Visible ${target}`;
+    case 'assertExists': return `Exists ${target}`;
+    case 'assertText': return `Assert "${step.expected || ''}"`;
+    case 'assertUrl': return `URL ${step.expected || step.url || ''}`;
+    default: return step.type || 'Step';
+  }
+}
+
+function locatorDetail(selector) {
+  if (!selector) return 'This step has no element locator.';
+  const lines = [
+    `Strategy: ${selector.strategy || 'css'}`,
+    `Value: ${selector.value || ''}`,
+  ];
+  if (selector.name) lines.push(`Name: ${selector.name}`);
+  if (selector.attr) lines.push(`Attribute: ${selector.attr}`);
+  lines.push(`CSS: ${selector.uniqueCss || selector.value || ''}`);
+  if (selector.warning) lines.push(selector.warning);
+  if (selector.fragile) lines.push('Structural CSS is a fallback. Prefer a stable locator before relying on this step.');
+  return lines.join('\n');
+}
+
 function stepSummary(step) {
   switch (step.type) {
     case 'navigate': return `Navigate ${step.url || ''}`;
@@ -250,15 +314,22 @@ function renderSteps() {
   }
   const list = h('div', { class: 'list' });
   session.steps.forEach((step, index) => {
-    const button = h('button', {
+    const copy = h('span', { class: 'step-copy' }, h('span', { class: 'step-title' }, stepTitle(step)));
+    const warning = step.warning || (step.selector && step.selector.warning);
+    if (warning) copy.append(h('small', { class: 'step-warning' }, warning));
+    list.append(h('button', {
       class: `step${index === selectedStep ? ' selected' : ''}`,
+      title: stepSummary(step),
       onclick: () => { selectedStep = index; render(); },
-    }, h('span', { class: 'muted' }, String(index + 1)), h('span', {}, stepSummary(step)));
-    if (step.warning || (step.selector && step.selector.warning)) button.append(h('small', {}, step.warning || step.selector.warning));
-    list.append(button);
+    },
+      h('span', { class: 'step-icon', 'aria-hidden': 'true' }, stepIcon(step.type)),
+      h('span', { class: 'step-index' }, String(index + 1).padStart(2, '0')),
+      copy
+    ));
   });
   const editor = renderStepEditor(session.steps[selectedStep], selectedStep);
-  wrap.append(h('div', { class: 'split' }, h('div', {}, list, stepToolbar()), editor));
+  wrap.append(h('div', { class: 'panels' }, h('div', { class: 'pane' }, list), h('div', { class: 'pane' }, editor)));
+  wrap.append(stepToolbar());
   wrap.append(h('div', { class: 'row' },
     h('input', { type: 'text', id: 'testName', placeholder: 'Test name', value: 'Recorded test' }),
     h('button', { class: 'primary', onclick: saveDraft }, 'Save test')
@@ -313,10 +384,11 @@ function renderStepEditor(step) {
       onchange: (event) => updateSelected({ checked: event.target.checked }),
     })));
   }
+  fields.push(labeled('Locator', h('pre', { class: 'locator' }, locatorDetail(step.selector))));
   if (step.selector) {
     fields.push(labeled('CSS override', h('input', {
       type: 'text', value: step.selector.uniqueCss || '',
-      onchange: (event) => updateSelected({ selector: { ...step.selector, uniqueCss: event.target.value, strategy: event.target.value ? step.selector.strategy : step.selector.strategy } }),
+      onchange: (event) => updateSelected({ selector: { ...step.selector, uniqueCss: event.target.value } }),
     })));
     if (step.selector.ambiguous || step.selector.fragile) {
       fields.push(h('div', { class: 'card' }, step.selector.warning || 'This selector needs review.'));
@@ -563,7 +635,7 @@ function renderExport() {
     h('button', { onclick: () => navigator.clipboard.writeText(code) }, 'Copy'),
     h('button', { class: 'primary', onclick: () => downloadFiles(exportFramework, code) }, 'Download')
   ));
-  wrap.append(h('textarea', { readonly: 'readonly' }, code));
+  wrap.append(h('textarea', { class: 'code', readonly: 'readonly' }, code));
   wrap.append(h('p', { class: 'muted' }, 'Secrets are environment parameters, not literals. Playwright is the output aimed at a direct local run.'));
   return wrap;
 }
@@ -599,32 +671,49 @@ function download(filename, text) {
 }
 
 function renderAi() {
+  const settings = model.settings || {};
+  const live = settings.aiMode === 'live' && !!settings.aiProxyUrl;
   const wrap = h('section', {},
-    h('h2', {}, 'AI assistant'),
-    h('p', { class: 'muted' }, 'Proposals are editable suggestions. They are not passing tests, and this extension does not execute model output as JavaScript.')
+    h('div', { class: 'row' },
+      h('h2', {}, 'AI assistant'),
+      h('span', { class: live ? 'pill running' : 'pill paused', id: 'aiModePill' }, live ? 'Live AI' : 'Mock AI')
+    ),
+    h('p', { class: 'muted' }, live
+      ? `Live AI sends the prompt and page structure to ${settings.aiProxyUrl}. The plan is still a proposal until you approve it.`
+      : 'Mock AI builds the plan on this machine. It does not call a provider.')
   );
-  const mode = (model.settings && model.settings.aiMode) || 'mock';
-  wrap.append(h('div', { class: 'card' }, mode === 'live' && model.settings.aiProxyUrl
-    ? `Live proxy: ${model.settings.aiProxyUrl}`
-    : 'Mock mode is active. No provider is called unless you save a proxy URL and choose Live in Settings.'));
-  wrap.append(h('textarea', { id: 'aiPrompt' }, 'Test the login form, verify invalid credentials show an error, then test a successful login.'));
+  wrap.append(h('textarea', {
+    class: 'prompt',
+    id: 'aiPrompt',
+  }, 'Test the login form, verify invalid credentials show an error, then test a successful login.'));
   wrap.append(h('div', { class: 'row' }, h('button', { class: 'primary', id: 'aiGenerate', onclick: generatePlan }, 'Generate proposal')));
   if (!aiPlan) return wrap;
-  wrap.append(h('div', { class: 'card' }, h('strong', {}, 'Proposed, not executed. '), aiPlan.summary || ''));
+  wrap.append(h('p', { class: 'muted' }, `Proposed, not executed. ${aiPlan.summary || ''}`));
   aiPlan.cases.forEach((testCase, caseIndex) => {
-    const box = h('div', { class: 'card stack' }, h('strong', {}, testCase.name));
+    const box = h('div', { class: 'card stack ai-case' }, h('strong', {}, testCase.name));
     testCase.steps.forEach((step, stepIndex) => {
-      box.append(h('label', { class: 'stack' }, `${stepIndex + 1}. ${step.type}`, h('input', {
+      const copy = h('span', { class: 'step-copy' }, h('span', { class: 'step-title' }, stepTitle(step)));
+      if (step.warning) copy.append(h('small', { class: 'step-warning' }, step.warning));
+      box.append(h('div', { class: 'step' },
+        h('span', { class: 'step-icon', 'aria-hidden': 'true' }, stepIcon(step.type)),
+        h('span', { class: 'step-index' }, String(stepIndex + 1).padStart(2, '0')),
+        copy
+      ));
+      box.append(h('input', {
+        class: 'step-edit',
         type: 'text',
         value: stepSummary(step),
+        'aria-label': `Edit step ${stepIndex + 1}`,
         onchange: (event) => editAiStep(caseIndex, stepIndex, event.target.value),
-      })));
-      if (step.warning) box.append(h('div', { class: 'muted' }, step.warning));
+      }));
       if (!step.selector && step.type !== 'navigate' && step.type !== 'assertUrl') {
         box.append(h('div', { class: 'muted' }, 'No selector from the open page.'));
       }
     });
-    box.append(h('button', { class: 'primary', onclick: () => saveAiCase(caseIndex) }, 'Approve and save'));
+    box.append(h('div', { class: 'ai-actions' },
+      h('button', { class: 'primary', onclick: () => saveAiCase(caseIndex) }, 'Approve and save'),
+      h('button', { onclick: () => { view = 'run'; render(); } }, 'Run tests')
+    ));
     wrap.append(box);
   });
   return wrap;

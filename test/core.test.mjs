@@ -336,6 +336,49 @@ test('all four generators keep the page-object flow and parameterize secrets', (
   assert.match(api, /Skipped unsupported HTTP method/);
 });
 
+test('generated names stay short, repeated clicks drop, and validations remain', () => {
+  const dom = new JSDOM('<!doctype html><button>Add to cart</button><div><span>x</span></div>');
+  const button = selectors.describeElement(dom.window.document.querySelector('button'), dom.window.document);
+  const span = selectors.describeElement(dom.window.document.querySelector('span'), dom.window.document);
+  assert.equal(button.strategy, 'role');
+  assert.equal(button.fragile, false);
+  assert.equal(span.strategy, 'css');
+  assert.equal(span.fragile, true);
+  assert.match(span.warning, /structural CSS/);
+  const model = code.buildPageModel([
+    { type: 'click', selector: { strategy: 'testid', value: 'add-cart' } },
+    { type: 'click', selector: { strategy: 'testid', value: 'add-cart' } },
+    { type: 'navigate', url: 'https://shop.example/catalog' },
+    { type: 'navigate', url: 'https://shop.example/product' },
+    { type: 'navigate', url: 'javascript:alert(1)' },
+    { type: 'click', selector: { strategy: 'css', value: 'main > div:nth-of-type(2) > span:nth-of-type(3)', fragile: true } },
+    { type: 'input', selector: { strategy: 'testid', value: 'password' }, secret: true, paramName: 'password' },
+    { type: 'assertText', selector: { strategy: 'testid', value: 'cart' }, expected: 'Notebook is in the cart', match: 'exact' },
+    { type: 'assertUrl', expected: 'https://shop.example/product', match: 'exact' },
+  ]);
+  const names = model.calls.map((call) => call.name);
+  assert.deepEqual(names.filter((name) => name.startsWith('click')), ['clickAddCart', 'clickElement']);
+  assert.deepEqual(model.calls.filter((call) => call.name === 'navigateTo').map((call) => call.args[0]), [
+    'https://shop.example/catalog',
+    'https://shop.example/product',
+  ]);
+  assert.equal(names.includes('assertTextCart'), true);
+  assert.equal(names.includes('assertUrl'), true);
+  const playwright = code.renderPlaywright([
+    { type: 'navigate', url: 'https://shop.example/catalog' },
+    { type: 'navigate', url: 'https://shop.example/product' },
+    { type: 'input', selector: { strategy: 'testid', value: 'password' }, secret: true, paramName: 'password' },
+    { type: 'assertText', selector: { strategy: 'testid', value: 'cart' }, expected: 'Notebook is in the cart', match: 'exact' },
+  ]);
+  assert.match(playwright, /toHaveText/);
+  assert.match(playwright, /Notebook is in the cart/);
+  assert.match(playwright, /TEST_PASSWORD/);
+  assert.equal(playwright.includes('demo123'), false);
+  assert.equal(playwright.includes('javascript:'), false);
+  assert.match(playwright, /https:\/\/shop\.example\/catalog/);
+  assert.match(playwright, /https:\/\/shop\.example\/product/);
+});
+
 function sequentialIds() {
   let n = 0;
   return { id: () => `id${n += 1}`, now: () => 1_000 + n };
