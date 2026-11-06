@@ -47,6 +47,8 @@ function toCssSelector(selector) {
       return `[name="${escapeAttr(selector.value)}"]`;
     case 'text':
       return selector.uniqueCss || selector.tag || '*';
+    case 'css':
+      return selector.value || selector.uniqueCss || '*';
     default:
       return selector.uniqueCss || selector.value || '*';
   }
@@ -76,6 +78,12 @@ function seleniumBy(selector) {
       return `By.id("${escapeJava(selector.value)}")`;
     case 'name':
       return `By.name("${escapeJava(selector.value)}")`;
+    case 'css':
+      return `By.cssSelector("${escapeJava(selector.value || selector.uniqueCss || '*')}")`;
+    case 'label': {
+      const text = escapeJava(selector.value);
+      return `By.xpath("//input[@id=//label[normalize-space()=\\"${text}\\"]/@for] | //textarea[@id=//label[normalize-space()=\\"${text}\\"]/@for] | //select[@id=//label[normalize-space()=\\"${text}\\"]/@for] | //label[normalize-space()=\\"${text}\\"]//input | //label[normalize-space()=\\"${text}\\"]//textarea | //label[normalize-space()=\\"${text}\\"]//select")`;
+    }
     default:
       return `By.cssSelector("${escapeJava(selector.uniqueCss || selector.value || '*')}")`;
   }
@@ -84,6 +92,13 @@ function seleniumBy(selector) {
 function cypressLocator(selector) {
   if (!selector) return 'cy.get("*")';
   if (selector.strategy === 'text') return `cy.contains(${jsString(selector.tag || '*')}, ${jsString(selector.value)})`;
+  if (selector.strategy === 'role' && selector.name) {
+    return `cy.contains(${jsString(selector.tag || '*')}, ${jsString(selector.name)})`;
+  }
+  if (selector.strategy === 'label') {
+    const text = jsString(selector.value);
+    return `cy.contains('label', ${text}).then(($label) => { const id = $label.attr('for'); return id ? cy.get('#' + CSS.escape(id)) : cy.wrap($label).find('input, textarea, select, button'); })`;
+  }
   return `cy.get(${jsString(toCssSelector(selector))}, { timeout: 10000 })`;
 }
 

@@ -156,6 +156,15 @@ pre.locator {
   padding-top: 8px;
 }
 .step-edit { width: 100%; min-height: 0; }
+.candidate {
+  border: 1px solid #d9dee7;
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
 .passed { color: #067647; }
 .failed { color: #b42318; }
 .skipped { color: #667085; }
