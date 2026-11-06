@@ -227,3 +227,25 @@ A click is removed only when the next click has the same selector and the same r
 `node test/shop.mjs`: 5 passed, 0 failed.
 
 `node test/persistence.mjs`: product save, Chrome restart, and reopened steps passed. The extensions Reload check is still the debug-session limitation.
+
+## Smart locator engine, 2026-11-06
+
+Branch `feature/smart-locator-engine`, from `origin/master` at `86e97a9`.
+
+Recording still makes no AI call. Each element stores the best verified locator, the other candidates, and a fingerprint of tag, role, accessible name, stable attributes, and a parent anchor. Field values are not stored. A locator that matches nothing or matches more than one element fails the step. A safe backup is shown for approval and is not applied by itself. An ambiguous backup is not clicked.
+
+`npm test`: 20 passed, 0 failed, 1 skipped. The skip is the live provider smoke test. The new test covers a unique test id, a duplicate test id, a role and accessible name, two Add to cart buttons in separate sections, a dynamic id, an element with no stable attributes, a changed primary locator, a safe backup, an ambiguous backup, legacy selector migration, repeated clicks, generated Playwright, Selenium, and Cypress, and a failed step that stays failed.
+
+`node test/acceptance.mjs`: 16/16 passed.
+
+`node test/ai-login.mjs`: 5/5 passed.
+
+`node test/screenshot.mjs`: 5 passed, 0 failed. No image was invented.
+
+`node test/playwright-export.mjs`: the success spec passed. The deliberate failure expected `http://127.0.0.1:55832/not-the-app` and received `http://127.0.0.1:55832/app.html`. The password was absent.
+
+`node test/ai-flow.mjs`: the combined run timed out once while Chrome was already busy. Run on its own, 4/4 passed.
+
+`node test/shop.mjs`: 5 passed, 0 failed. The notebook Add to cart step kept `data-testid=add-cart`, a button fingerprint, and backup candidates. Replay passed and the page showed `Notebook is in the cart`. The official Playwright runner passed the export.
+
+`node test/persistence.mjs`: product save, Chrome restart, and reopened steps passed. The extensions Reload check is still the debug-session limitation.

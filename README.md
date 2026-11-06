@@ -26,7 +26,7 @@ Chrome 156 does not load this extension from `--load-extension` on the branded C
 3. Press Start and allow the site when Chrome asks. `http://localhost` and `http://127.0.0.1` are already permitted so the local demo does not prompt.
 4. Optional: check "Capture API calls" before starting. Leave it off unless you need REST Assured output.
 5. Use the site. Pause, resume, or stop from the controller. Only the tab you started on is recorded, and only while status is Recording.
-6. Edit steps, add assertions, and save the test.
+6. Edit steps, add assertions, and save the test. Each step shows its primary locator, backup candidates, and a short reliability note. Choose "Use this locator" to switch candidates. A failed run can offer a replacement, and that replacement is applied only after you approve it.
 7. On Run tests, enter any secret parameters for that run. They are not written to extension storage.
 8. Pass, fail, and skipped are reported from the run that just executed. A failed step stays failed. Later steps are skipped.
 
