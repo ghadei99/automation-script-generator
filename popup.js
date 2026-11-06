@@ -776,6 +776,7 @@ function renderAi() {
   wrap.append(h('div', { class: 'row' }, h('button', { class: 'primary', id: 'aiGenerate', onclick: generatePlan }, 'Generate proposal')));
   if (!aiPlan) return wrap;
   wrap.append(h('p', { class: 'muted' }, `Proposed, not executed. ${aiPlan.summary || ''}`));
+  wrap.append(h('p', { class: 'muted' }, usageText(aiPlan, live)));
   aiPlan.cases.forEach((testCase, caseIndex) => {
     const box = h('div', { class: 'card stack ai-case' }, h('strong', {}, testCase.name));
     testCase.steps.forEach((step, stepIndex) => {
@@ -806,6 +807,17 @@ function renderAi() {
   return wrap;
 }
 
+function usageText(plan, live) {
+  const usage = plan && plan.usage;
+  if (usage && Number.isFinite(usage.totalTokens)) {
+    const cost = Number.isFinite(usage.cost) ? ` Reported cost: ${usage.cost}.` : '';
+    return `Token usage from the provider: prompt ${usage.promptTokens}, completion ${usage.completionTokens}, total ${usage.totalTokens}.${cost}`;
+  }
+  if (plan && plan.reused) return 'Reused an approved plan. No provider call. Token usage was not reported.';
+  if (!live) return 'Mock AI did not call a provider. Token usage was not reported.';
+  return 'The provider did not report token usage.';
+}
+
 function editAiStep(caseIndex, stepIndex, summary) {
   ASG.applyStepEdit(aiPlan.cases[caseIndex].steps[stepIndex], summary);
 }
@@ -823,6 +835,10 @@ async function generatePlan() {
       mode: model.settings.aiMode,
     });
     aiPlan = response.plan;
+    aiPlan.planKey = response.planKey || '';
+    aiPlan.planner = response.mode === 'live' ? 'live' : 'mock';
+    aiPlan.usage = response.usage || null;
+    aiPlan.reused = !!response.reused;
     render();
   } catch (error) {
     errorText = error.message;
@@ -835,7 +851,14 @@ async function saveAiCase(caseIndex) {
   try {
     const response = await send({
       type: 'tests:create',
-      test: { name: testCase.name, source: 'ai', origin: (targetTab && ASG.originOf(targetTab.url)) || '', steps: testCase.steps },
+      test: {
+        name: testCase.name,
+        source: 'ai',
+        origin: (targetTab && ASG.originOf(targetTab.url)) || '',
+        steps: testCase.steps,
+        planKey: aiPlan.planKey || '',
+        planner: aiPlan.planner === 'live' ? 'live' : 'mock',
+      },
     });
     selectedTestId = response.test.id;
     await reload();
@@ -858,9 +881,9 @@ function renderSettings() {
     labeled('AI mode', h('select', { id: 'aiMode' },
       h('option', { value: 'mock', selected: settings.aiMode !== 'live' }, 'Mock (no network)'),
       h('option', { value: 'live', selected: settings.aiMode === 'live' }, 'Live proxy'))),
-    labeled('AI proxy URL', h('input', { id: 'aiProxyUrl', type: 'url', value: settings.aiProxyUrl || '', placeholder: 'https://your-proxy.example/plan' })),
+    labeled('AI proxy URL', h('input', { id: 'aiProxyUrl', type: 'url', value: settings.aiProxyUrl || '', placeholder: 'http://127.0.0.1:8787' })),
     labeled('Proxy access token', h('input', { id: 'aiProxyToken', type: 'password', value: settings.aiProxyToken || '', autocomplete: 'off' })),
-    h('p', { class: 'muted' }, 'The token stays in extension storage and is sent only to the proxy URL you enter. This extension does not embed a provider key.'),
+    h('p', { class: 'muted' }, 'The token stays in extension storage and is sent only to the proxy URL you enter. This extension does not embed a provider key. The reference proxy listens on 127.0.0.1 and is not a public service.'),
     h('div', { class: 'row' }, h('button', { class: 'primary', onclick: saveSettings }, 'Save settings'))
   );
 }

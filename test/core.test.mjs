@@ -534,6 +534,70 @@ test('smart locators rank verified candidates and leave failures failed', async 
   assert.equal(outcome.results[1].status, 'skipped');
 });
 
+test('page summaries stay small and plans do not keep secrets or remote code', () => {
+  const dom = new JSDOM(`<!doctype html><html><head><title>Demo bank</title></head><body>
+    <h1>Demo bank</h1>
+    <form id="login">
+      <label for="username">Username</label>
+      <input id="username" data-testid="username" name="username" value="demo123">
+      <label for="password">Password</label>
+      <input id="password" data-testid="password" name="password" type="password" value="demo123">
+      <button data-testid="submit" type="submit">Sign in</button>
+      <p data-testid="error" hidden>Invalid credentials</p>
+    </form>
+    <p>This paragraph is not an interactive control and should stay out of the summary.</p>
+    <div role="alert">Invalid credentials</div>
+  </body></html>`, { url: 'http://127.0.0.1:4173/' });
+  const previousDocument = globalThis.document;
+  const previousLocation = globalThis.location;
+  globalThis.document = dom.window.document;
+  globalThis.location = dom.window.location;
+  try {
+    const summary = ai.compactSummary(ai.collectPageEvidence());
+    const encoded = JSON.stringify(summary);
+    assert.equal(encoded.includes('demo123'), false);
+    assert.equal(encoded.includes('not an interactive control'), false);
+    assert.match(summary.purpose, /Demo bank/);
+    const password = summary.items.find((item) => item.testid === 'password');
+    assert.equal(password.type, 'password');
+    assert.equal(password.form, 'login');
+    assert.ok(password.locators.some((locator) => locator.strategy === 'testid' && locator.value === 'password'));
+    assert.ok(summary.messages.some((message) => message.text === 'Invalid credentials'));
+    assert.ok(summary.items.length <= 24);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousLocation === undefined) delete globalThis.location;
+    else globalThis.location = previousLocation;
+  }
+
+  const evidence = {
+    pageUrl: 'http://127.0.0.1:4173/',
+    items: [{ tag: 'input', type: 'password', testid: 'password', name: 'password', label: 'Password' }],
+  };
+  const first = ai.planCacheKey('Test login', evidence);
+  const second = ai.planCacheKey('Test login', evidence);
+  const changed = ai.planCacheKey('Test checkout', evidence);
+  assert.equal(first, second);
+  assert.notEqual(first, changed);
+  const unsafe = ai.groundPlan({
+    title: 'Unsafe',
+    summary: 'Review',
+    source: 'live',
+    cases: [{
+      name: 'Unsafe',
+      steps: [
+        { id: 'go', type: 'navigate', url: 'javascript:alert(1)' },
+        { id: 'password', type: 'input', value: 'demo123', selector: { strategy: 'testid', value: 'password' } },
+      ],
+    }],
+  }, evidence);
+  assert.equal(unsafe.cases[0].steps[0].url, undefined);
+  assert.equal(unsafe.cases[0].steps[1].secret, true);
+  assert.equal(JSON.stringify(unsafe).includes('demo123'), false);
+  assert.equal(JSON.stringify(unsafe).includes('javascript:'), false);
+});
+
 function sequentialIds() {
   let n = 0;
   return { id: () => `id${n += 1}`, now: () => 1_000 + n };

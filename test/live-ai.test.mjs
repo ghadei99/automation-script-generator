@@ -7,7 +7,7 @@ const providerKey = process.env.AI_API_KEY || '';
 const configured = Boolean(token && providerKey);
 
 test('live provider returns a schema-valid plan', {
-  skip: configured ? false : 'PROXY_AUTH_TOKEN and AI_API_KEY are not configured',
+  skip: configured ? false : 'UNVERIFIED: set PROXY_AUTH_TOKEN and AI_API_KEY, then run node --test test/live-ai.test.mjs. See docs/AI_POLICY.md.',
   timeout: 30000,
 }, async () => {
   let output = '';
