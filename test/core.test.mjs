@@ -14,6 +14,7 @@ const runner = require('../lib/runner.js');
 const ai = require('../lib/ai.js');
 const selectors = require('../lib/selectors.js');
 const code = require('../codegen.js');
+const registration = require('../lib/registration.js');
 
 test('serialized writes keep every concurrent event', async () => {
   const withLock = mutex.createMutex();
@@ -596,6 +597,44 @@ test('page summaries stay small and plans do not keep secrets or remote code', (
   assert.equal(unsafe.cases[0].steps[1].secret, true);
   assert.equal(JSON.stringify(unsafe).includes('demo123'), false);
   assert.equal(JSON.stringify(unsafe).includes('javascript:'), false);
+});
+
+test('a second recording updates the existing recorder instead of registering it twice', () => {
+  const files = ['lib/id.js', 'content.js'];
+  const first = registration.desiredScripts('https://www.google.com', false, files, 'injected/network.js');
+  const registered = [{ id: 'asg-recorder', ...first[0] }, { id: 'unrelated-script', matches: ['<all_urls>'] }];
+  const next = registration.desiredScripts('https://www.flipkart.com', false, files, 'injected/network.js');
+  const plan = registration.planRegistration(registered, next);
+  assert.deepEqual(plan.remove, []);
+  assert.deepEqual(plan.insert.map((script) => script.id), []);
+  assert.deepEqual(plan.update.map((script) => script.id), ['asg-recorder']);
+  assert.deepEqual(plan.update[0].matches, ['https://www.flipkart.com/*']);
+  assert.equal(plan.remove.includes('asg-network'), false);
+  assert.equal(plan.remove.includes('unrelated-script'), false);
+
+  const withNetwork = registration.planRegistration(registered, registration.desiredScripts('https://www.flipkart.com', true, files, 'injected/network.js'));
+  assert.deepEqual(withNetwork.remove, []);
+  assert.deepEqual(withNetwork.insert.map((script) => script.id), ['asg-network']);
+
+  const turnedOff = registration.planRegistration(
+    [...registered, { id: 'asg-network', matches: ['https://www.google.com/*'], js: ['injected/network.js'], world: 'MAIN', runAt: 'document_start' }],
+    next
+  );
+  assert.deepEqual(turnedOff.remove, ['asg-network']);
+  assert.equal(registration.configMatches(next[0], next[0]), true);
+});
+
+test('switching origins with API capture off updates the recorder and leaves the network script alone', () => {
+  const files = ['content.js'];
+  const registered = registration.desiredScripts('https://www.google.com', false, files, 'injected/network.js');
+  const desired = registration.desiredScripts('https://www.flipkart.com', false, files, 'injected/network.js');
+  const plan = registration.planRegistration(registered, desired);
+  assert.deepEqual(plan.remove, []);
+  assert.deepEqual(plan.insert, []);
+  assert.deepEqual(plan.update.map((script) => script.id), ['asg-recorder']);
+  assert.deepEqual(plan.update[0].matches, ['https://www.flipkart.com/*']);
+  assert.equal(JSON.stringify(plan).includes('www.google.com'), false);
+  assert.equal(JSON.stringify(plan).includes('asg-network'), false);
 });
 
 function sequentialIds() {

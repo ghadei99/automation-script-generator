@@ -7,7 +7,8 @@ importScripts(
   'lib/schema.js',
   'lib/reducer.js',
   'lib/ai.js',
-  'lib/runner.js'
+  'lib/runner.js',
+  'lib/registration.js'
 );
 
 const withLock = ASG.createMutex();
@@ -19,11 +20,13 @@ const DEFAULT_SETTINGS = {
   aiProxyToken: '',
 };
 const RECORDER_FILES = ['lib/id.js', 'lib/origin.js', 'lib/redact.js', 'lib/selectors.js', 'content.js'];
-const SCRIPT_IDS = ['asg-recorder', 'asg-network'];
+const NETWORK_FILE = 'injected/network.js';
 
 let session = null;
 let activeRun = null;
 let stopRequested = false;
+let startInFlight = false;
+let scriptQueue = Promise.resolve();
 let ready = Promise.resolve();
 
 function delay(ms) {
@@ -103,27 +106,32 @@ async function hasOriginPermission(url) {
   return false;
 }
 
-async function registerScripts(current) {
-  const pattern = `${current.origin}/*`;
-  await chrome.scripting.unregisterContentScripts({ ids: SCRIPT_IDS }).catch(() => {});
-  const scripts = [{
-    id: 'asg-recorder',
-    js: RECORDER_FILES,
-    matches: [pattern],
-    runAt: 'document_start',
-    persistAcrossSessions: false,
-  }];
-  if (current.networkCapture) {
-    scripts.push({
-      id: 'asg-network',
-      js: ['injected/network.js'],
-      matches: [pattern],
-      runAt: 'document_start',
-      world: 'MAIN',
-      persistAcrossSessions: false,
-    });
-  }
-  await chrome.scripting.registerContentScripts(scripts);
+function enqueueScripts(task) {
+  const run = scriptQueue.then(task, task);
+  scriptQueue = run.then(() => {}, () => {});
+  return run;
+}
+
+async function removeManagedScripts() {
+  const registered = await chrome.scripting.getRegisteredContentScripts();
+  const ids = registered.map((script) => script.id).filter((id) => ASG.MANAGED_IDS.includes(id));
+  if (ids.length) await chrome.scripting.unregisterContentScripts({ ids });
+}
+
+async function ensureRegisteredScripts(current) {
+  return enqueueScripts(async () => {
+    const desired = ASG.desiredScripts(current.origin, !!current.networkCapture, RECORDER_FILES, NETWORK_FILE);
+    const registered = await chrome.scripting.getRegisteredContentScripts();
+    const plan = ASG.planRegistration(registered, desired);
+    if (plan.remove.length) await chrome.scripting.unregisterContentScripts({ ids: plan.remove });
+    if (plan.update.length) await chrome.scripting.updateContentScripts(plan.update);
+    if (plan.insert.length) await chrome.scripting.registerContentScripts(plan.insert);
+    const after = await chrome.scripting.getRegisteredContentScripts();
+    const remaining = ASG.planRegistration(after, desired);
+    if (remaining.remove.length || remaining.update.length || remaining.insert.length) {
+      throw new Error(`Recording scripts were not ready for ${current.origin}. Start again.`);
+    }
+  });
 }
 
 async function injectNow(tabId, networkCapture) {
@@ -517,7 +525,7 @@ async function loadState() {
   await migrateLegacy();
   if (session && (session.status === 'recording' || session.status === 'paused')) {
     try {
-      await registerScripts(session);
+      await ensureRegisteredScripts(session);
     } catch (error) {
       session = {
         ...session,
@@ -526,6 +534,8 @@ async function loadState() {
       };
       await chrome.storage.local.set({ session });
     }
+  } else {
+    await removeManagedScripts().catch(() => {});
   }
   await updateBadge();
 }
@@ -560,6 +570,40 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   }
   if (activeRun && activeRun.status === 'running' && activeRun.tabId === tabId) stopRequested = true;
 });
+
+async function beginRecording(message) {
+  const tab = await chrome.tabs.get(message.tabId);
+  const reason = ASG.unsupportedReason(tab.url || '');
+  if (!tab.url || (reason && reason !== 'ignore')) throw new Error(reason || 'Open an http or https page before recording.');
+  if (!(await hasOriginPermission(tab.url))) throw new Error(`Permission was not granted for ${ASG.originOf(tab.url)}.`);
+  if (session && session.status === 'recording') throw new Error('A recording is already running. Stop it before starting another.');
+  const previous = session;
+  const next = ASG.createSession({
+    tabId: tab.id,
+    origin: ASG.originOf(tab.url),
+    url: tab.url,
+    networkCapture: !!message.networkCapture,
+  });
+  try {
+    await ensureRegisteredScripts(next);
+    await injectNow(tab.id, next.networkCapture);
+    const alive = await ping(tab.id);
+    if (!alive) throw new Error(`The recorder did not respond on ${next.origin}. Start again on that tab.`);
+    await saveSession(next);
+    await broadcastState();
+  } catch (error) {
+    await removeManagedScripts().catch(() => {});
+    await saveSession(previous);
+    if (previous && (previous.status === 'recording' || previous.status === 'paused')) {
+      await ensureRegisteredScripts(previous).catch(() => {});
+    }
+    const detail = (error && error.message) || 'Could not start recording on this page.';
+    throw new Error(detail.includes('Duplicate script ID')
+      ? `Recording did not start on ${next.origin}. A recorder script was already registered. Start again.`
+      : `Recording did not start on ${next.origin}. ${detail}`);
+  }
+  return { ok: true, session };
+}
 
 async function handleMessage(message, sender) {
   await ready;
@@ -605,36 +649,20 @@ async function handleMessage(message, sender) {
   }
 
   if (message.type === 'session:start') {
-    const tab = await chrome.tabs.get(message.tabId);
-    const reason = ASG.unsupportedReason(tab.url || '');
-    if (!tab.url || (reason && reason !== 'ignore')) throw new Error(reason || 'Open an http or https page before recording.');
-    if (!(await hasOriginPermission(tab.url))) throw new Error(`Permission was not granted for ${ASG.originOf(tab.url)}.`);
-    if (session && session.status === 'recording') throw new Error('A recording is already running. Stop it before starting another.');
-    const previous = session;
-    const next = ASG.createSession({
-      tabId: tab.id,
-      origin: ASG.originOf(tab.url),
-      url: tab.url,
-      networkCapture: !!message.networkCapture,
-    });
+    if (startInFlight) throw new Error('A recording is already starting.');
+    startInFlight = true;
     try {
-      await registerScripts(next);
-      await saveSession(next);
-      await injectNow(tab.id, next.networkCapture);
-      await broadcastState();
-    } catch (error) {
-      await chrome.scripting.unregisterContentScripts({ ids: SCRIPT_IDS }).catch(() => {});
-      await saveSession(previous);
-      throw new Error(error.message || 'Could not start recording on this page.');
+      return await beginRecording(message);
+    } finally {
+      startInFlight = false;
     }
-    return { ok: true, session };
   }
 
   if (message.type === 'session:load') {
     const test = (await getTests()).find((item) => item.id === message.id);
     if (!test) throw new Error('Saved test not found.');
     if (session && session.status === 'recording') throw new Error('Stop the current recording before loading a saved test.');
-    await chrome.scripting.unregisterContentScripts({ ids: SCRIPT_IDS }).catch(() => {});
+    await removeManagedScripts().catch(() => {});
     await saveSession({
       id: ASG.createId(),
       status: 'stopped',
@@ -659,18 +687,18 @@ async function handleMessage(message, sender) {
       if (ASG.originOf(tab.url || '') !== session.origin) {
         throw new Error(`The selected tab is no longer on ${session.origin}.`);
       }
-      await registerScripts(session);
+      await ensureRegisteredScripts(session);
     }
     await withLock(async () => {
       await saveSession(ASG.reduceEvent(session, { kind: 'status', status }));
     });
-    if (status === 'stopped') await chrome.scripting.unregisterContentScripts({ ids: SCRIPT_IDS }).catch(() => {});
+    if (status === 'stopped') await removeManagedScripts().catch(() => {});
     await broadcastState();
     return { ok: true, session };
   }
 
   if (message.type === 'session:discard') {
-    await chrome.scripting.unregisterContentScripts({ ids: SCRIPT_IDS }).catch(() => {});
+    await removeManagedScripts().catch(() => {});
     await saveSession(null);
     return { ok: true, session: null };
   }
