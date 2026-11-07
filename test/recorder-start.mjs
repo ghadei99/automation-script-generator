@@ -48,6 +48,28 @@ async function readSession(extensionPage) {
   });
 }
 
+async function checkboxState(extensionPage) {
+  return extensionPage.evaluate(() => {
+    const box = document.getElementById('networkCapture');
+    return {
+      checked: !!(box && box.checked),
+      disabled: !!(box && box.disabled),
+      text: document.body.innerText,
+    };
+  });
+}
+
+async function waitForCheckbox(extensionPage, expected) {
+  let last = null;
+  const start = Date.now();
+  while (Date.now() - start < 4000) {
+    last = await checkboxState(extensionPage);
+    if (last.checked === expected.checked && last.disabled === expected.disabled && last.text.includes(expected.text)) return last;
+    await delay(100);
+  }
+  throw new Error(`checkbox ${JSON.stringify(expected)}: ${JSON.stringify(last)}`);
+}
+
 async function waitForSession(extensionPage, predicate, label) {
   let last = null;
   const start = Date.now();
@@ -94,6 +116,47 @@ try {
   await send({ type: 'session:stop' });
   const stoppedA = await waitForSession(extensionPage, (state) => state.session && state.session.status === 'stopped', 'stop site A');
   const draftSteps = stoppedA.session.steps.length;
+  const missing = await send({ type: 'session:start', tabId: 2147483646, networkCapture: true });
+  const versionPage = await browser.newPage();
+  await versionPage.goto('chrome://version');
+  const versionId = await extensionPage.evaluate(async () => {
+    const tabs = await chrome.tabs.query({});
+    const tab = tabs.find((item) => (item.url || '').startsWith('chrome://version'));
+    return tab ? tab.id : null;
+  });
+  const blocked = versionId
+    ? await send({ type: 'session:start', tabId: versionId, networkCapture: true })
+    : { ok: false, message: 'chrome://version tab was missing' };
+  const example = await browser.newPage();
+  let denied = { ok: false, message: 'https://example.com did not open' };
+  try {
+    await example.goto('https://example.com/', { waitUntil: 'domcontentloaded', timeout: 15000 });
+    const exampleId = await extensionPage.evaluate(async () => {
+      const tabs = await chrome.tabs.query({});
+      const tab = tabs.find((item) => (item.url || '').startsWith('https://example.com'));
+      return tab ? tab.id : null;
+    });
+    if (exampleId) denied = await send({ type: 'session:start', tabId: exampleId, networkCapture: true });
+  } catch (error) {
+    denied = { ok: false, message: error.message };
+  }
+  const preserved = await readSession(extensionPage);
+  record(
+    'A failed start keeps the original draft',
+    missing.ok === false
+      && blocked.ok === false
+      && denied.ok === false
+      && !!versionId
+      && preserved.session
+      && preserved.session.id === stoppedA.session.id
+      && preserved.session.status === 'stopped'
+      && preserved.session.origin === siteA.url
+      && preserved.session.steps.length === draftSteps
+      && preserved.scripts.length === 0,
+    [missing.message, blocked.message, denied.message].filter(Boolean).join(' | '),
+  );
+  await versionPage.close();
+  await example.close().catch(() => {});
 
   try {
     const bootstrap = await browser.newPage();
@@ -151,6 +214,17 @@ try {
       && !String(startedB.message || '').includes('Duplicate script ID'),
     startedB.ok ? `${cross.session.origin} ${JSON.stringify(cross.scripts)}` : (startedB.message || 'start failed'),
   );
+  record(
+    'Switching origins with API capture off leaves only the new site',
+    !!startedB.ok
+      && startedB.session.networkCapture === false
+      && cross.scripts.length === 1
+      && cross.scripts[0].id === 'asg-recorder'
+      && cross.scripts[0].matches.length === 1
+      && cross.scripts[0].matches[0] === `${siteB.url}/*`
+      && cross.scripts.every((script) => script.matches.every((match) => !match.startsWith(siteA.url))),
+    JSON.stringify(cross.scripts),
+  );
 
   await pageA.bringToFront();
   await pageA.click('[data-testid="username"]');
@@ -178,6 +252,16 @@ try {
   );
 
   await send({ type: 'session:pause' });
+  try {
+    const pausedBox = await waitForCheckbox(extensionPage, { checked: false, disabled: true, text: 'network capture off' });
+    record(
+      'API capture checkbox matches a paused recording',
+      pausedBox.checked === false && pausedBox.disabled === true,
+      `checked=${pausedBox.checked} disabled=${pausedBox.disabled}`,
+    );
+  } catch (error) {
+    record('API capture checkbox matches a paused recording', false, error.message);
+  }
   await send({ type: 'session:resume' });
   await send({ type: 'session:stop' });
   const afterPause = await send({ type: 'session:start', tabId: idB, networkCapture: false });
@@ -246,6 +330,16 @@ try {
       && optedOut.scripts.every((script) => script.id !== 'asg-network'),
     `calls=${(optedOut.session.apiCalls || []).length} scripts=${optedOut.scripts.map((script) => script.id).join(',')}`,
   );
+  try {
+    const offBox = await waitForCheckbox(extensionPage, { checked: false, disabled: true, text: 'network capture off' });
+    record(
+      'API capture checkbox is off while that recording is active',
+      offBox.checked === false && offBox.disabled === true && optedOut.session.networkCapture === false,
+      `checked=${offBox.checked} disabled=${offBox.disabled}`,
+    );
+  } catch (error) {
+    record('API capture checkbox is off while that recording is active', false, error.message);
+  }
 
   await send({ type: 'session:stop' });
   const noisy = await send({ type: 'session:start', tabId: idB, networkCapture: true });
@@ -266,6 +360,17 @@ try {
     !!noisy.ok && foreign.length === 0 && networkScript && networkScript.matches.length === 1 && networkScript.matches[0] === `${siteB.url}/*`,
     `calls=${(optedIn.session.apiCalls || []).map((call) => call.url).join(' | ')} matches=${networkScript && networkScript.matches}`,
   );
+  try {
+    const onBox = await waitForCheckbox(extensionPage, { checked: true, disabled: true, text: 'network capture on' });
+    record(
+      'API capture checkbox is on while that recording is active',
+      onBox.checked === true && onBox.disabled === true && optedIn.session.networkCapture === true
+        && networkScript.matches[0] === `${siteB.url}/*`,
+      `checked=${onBox.checked} disabled=${onBox.disabled}`,
+    );
+  } catch (error) {
+    record('API capture checkbox is on while that recording is active', false, error.message);
+  }
 
   await send({ type: 'session:stop' });
   const cdp = await browser.target().createCDPSession();

@@ -624,6 +624,19 @@ test('a second recording updates the existing recorder instead of registering it
   assert.equal(registration.configMatches(next[0], next[0]), true);
 });
 
+test('switching origins with API capture off updates the recorder and leaves the network script alone', () => {
+  const files = ['content.js'];
+  const registered = registration.desiredScripts('https://www.google.com', false, files, 'injected/network.js');
+  const desired = registration.desiredScripts('https://www.flipkart.com', false, files, 'injected/network.js');
+  const plan = registration.planRegistration(registered, desired);
+  assert.deepEqual(plan.remove, []);
+  assert.deepEqual(plan.insert, []);
+  assert.deepEqual(plan.update.map((script) => script.id), ['asg-recorder']);
+  assert.deepEqual(plan.update[0].matches, ['https://www.flipkart.com/*']);
+  assert.equal(JSON.stringify(plan).includes('www.google.com'), false);
+  assert.equal(JSON.stringify(plan).includes('asg-network'), false);
+});
+
 function sequentialIds() {
   let n = 0;
   return { id: () => `id${n += 1}`, now: () => 1_000 + n };
