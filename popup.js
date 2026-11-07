@@ -272,16 +272,33 @@ function renderRecorder() {
   return box;
 }
 
+function releaseStartButton() {
+  const button = document.getElementById('startButton');
+  if (!button) return;
+  delete button.dataset.starting;
+  const reason = targetTab && targetTab.url ? ASG.unsupportedReason(targetTab.url) : 'Open an http or https page in a normal browser window.';
+  const blocked = reason && reason !== 'ignore';
+  button.disabled = !targetTab || !!blocked;
+}
+
 async function startRecording() {
   errorText = '';
+  const button = document.getElementById('startButton');
+  if (button && button.dataset.starting === '1') return;
+  if (button) {
+    button.disabled = true;
+    button.dataset.starting = '1';
+  }
   if (!targetTab || !targetTab.url) {
     errorText = 'Open a normal browser tab before recording.';
+    releaseStartButton();
     updateChrome();
     return;
   }
   const reason = ASG.unsupportedReason(targetTab.url);
   if (reason && reason !== 'ignore') {
     errorText = reason;
+    releaseStartButton();
     updateChrome();
     return;
   }
@@ -291,17 +308,22 @@ async function startRecording() {
     granted = await chrome.permissions.request({ origins: [pattern] });
   } catch (error) {
     errorText = error.message || 'Chrome did not show the site permission prompt.';
+    releaseStartButton();
     updateChrome();
     return;
   }
   if (!granted) {
     errorText = `Site permission is required to record ${ASG.originOf(targetTab.url)}.`;
+    releaseStartButton();
     updateChrome();
     return;
   }
   if (model.session && model.session.steps && model.session.steps.length && model.session.status !== 'recording') {
     const proceed = window.confirm('Starting a new recording replaces the current draft. Save it first if you still need it.');
-    if (!proceed) return;
+    if (!proceed) {
+      releaseStartButton();
+      return;
+    }
   }
   try {
     const networkCapture = document.getElementById('networkCapture').checked;
@@ -310,7 +332,8 @@ async function startRecording() {
     render();
   } catch (error) {
     errorText = error.message;
-    updateChrome();
+    await reload().catch(() => {});
+    render();
   }
 }
 
