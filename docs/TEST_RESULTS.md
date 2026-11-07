@@ -299,3 +299,17 @@ A second Start failed with `Duplicate script ID 'asg-recorder'` because Stop tri
 `node test/shop.mjs`: 5 passed, 0 failed. Demo port `58222`.
 
 `node test/persistence.mjs`: product save, Chrome restart, and reopened steps passed. Demo port `58247`. The extensions Reload check is still the debug-session limitation.
+
+## Recorder merge gate, 2026-11-07
+
+`origin/master` is `6f1e17b`, the merge of live AI. This branch contains that work through `e9337a4`. The merge commit itself is not an ancestor, and it has no file changes. A merge into master is content-clean.
+
+`node test/recorder-start.mjs` in Chrome/156.0.8078.80: 18/18 passed. With API capture off, switching from `http://127.0.0.1:59776` to `http://127.0.0.1:59777` left only `asg-recorder` on the new origin. Stop then Start worked without restarting Chrome. A missing tab, `chrome://version`, and `https://example.com` without permission all failed without replacing the draft. The API checkbox was unchecked and disabled while capture was off, and checked and disabled while capture was on.
+
+`node test/acceptance.mjs`: 16/16 passed. Demo port `59824`.
+
+`node test/ai-login.mjs`: 5/5 passed.
+
+`node test/playwright-export.mjs`: the success spec passed. The deliberate failure expected `http://127.0.0.1:59866/not-the-app` and received `http://127.0.0.1:59866/app.html`. The password was absent.
+
+`node test/persistence.mjs`: product save, Chrome restart, and reopened steps passed. Demo port `59888`. The extensions Reload check is still the debug-session limitation.
