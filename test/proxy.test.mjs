@@ -143,7 +143,15 @@ test('the proxy checks auth, redacts evidence, validates the plan, and rate limi
     assert.equal(huge.status, 413);
     const evidence = await post({
       prompt: 'Check the form',
-      pageEvidence: [{ tag: 'input', type: 'password', text: 'Sign in', password: 'demo123', value: 'demo123' }],
+      pageEvidence: [{
+        ref: 'field_password',
+        tag: 'input',
+        type: 'password',
+        text: 'Sign in',
+        password: 'demo123',
+        value: 'demo123',
+        locators: [{ strategy: 'css', value: 'body > form > input.secret-path' }],
+      }],
     });
     assert.equal(evidence.status, 200);
     assert.equal(evidence.body.source, 'live');
@@ -155,6 +163,9 @@ test('the proxy checks auth, redacts evidence, validates the plan, and rate limi
     assert.equal(forwarded.body.includes(token), false);
     assert.equal(forwarded.body.includes('demo123'), false);
     assert.match(forwarded.body, /Sign in/);
+    assert.match(forwarded.body, /field_password/);
+    assert.equal(forwarded.body.includes('secret-path'), false);
+    assert.equal(forwarded.body.includes('locators'), false);
     const rejected = await post({ prompt: 'bad-plan' });
     assert.equal(rejected.status, 502);
     assert.match(rejected.body.error, /executable field/);

@@ -745,6 +745,8 @@ async function handleMessage(message, sender) {
       steps: ASG.sanitizeSteps(body.steps || []),
       apiCalls: [],
     };
+    const block = ASG.approvalBlock(test.steps, 'approval');
+    if (block) throw new Error(block);
     const tests = await getTests();
     tests.unshift(test);
     await chrome.storage.local.set({ tests });
@@ -789,6 +791,8 @@ async function handleMessage(message, sender) {
     }
     const steps = ASG.sanitizeSteps(test.steps);
     if (!steps.length) throw new Error('This test has no steps.');
+    const block = ASG.approvalBlock(steps, 'execution');
+    if (block) throw new Error(block);
     await chrome.tabs.get(message.tabId);
     stopRequested = false;
     activeRun = {
@@ -858,8 +862,22 @@ async function handleMessage(message, sender) {
       mode: 'live',
       planKey,
       usage: live.usage || null,
-      plan: ASG.groundPlan(live.plan, evidence),
+      plan: ASG.bindPlan(ASG.groundPlan(live.plan, evidence), evidence),
     };
+  }
+
+  if (message.type === 'ai:rebind') {
+    const evidence = await pageEvidence(message.tabId);
+    if (!evidence) throw new Error('Open the page in the selected tab before revalidating.');
+    const steps = ASG.sanitizeSteps(message.steps || []);
+    if (!steps.length) throw new Error('There are no steps to revalidate.');
+    const plan = ASG.bindPlan({
+      title: 'Revalidate',
+      summary: '',
+      source: 'mock',
+      cases: [{ name: 'Current', steps }],
+    }, evidence);
+    return { ok: true, steps: plan.cases[0].steps };
   }
 
   return { ok: false, message: 'Unknown message' };
@@ -931,11 +949,7 @@ async function requestLivePlan(prompt, origin, evidence, settings) {
       body: JSON.stringify({
         prompt: String(prompt || '').slice(0, 2000),
         targetOrigin: origin || '',
-        summary: evidence ? {
-          purpose: evidence.purpose || '',
-          items: evidence.items || [],
-          messages: evidence.messages || [],
-        } : { purpose: '', items: [], messages: [] },
+        summary: evidence && ASG.providerSummary ? ASG.providerSummary(evidence) : { purpose: '', items: [], messages: [] },
       }),
     });
     const body = await response.json().catch(() => ({}));

@@ -221,12 +221,14 @@ try {
     generated.playwright ? 'Playwright, Selenium, and Cypress generated' : 'no steps to generate',
   );
 
-  const planResponse = await extensionPage.evaluate(async (origin) => chrome.runtime.sendMessage({
+  await app.goto(demo.url, { waitUntil: 'domcontentloaded' });
+  const planResponse = await extensionPage.evaluate(async (payload) => chrome.runtime.sendMessage({
     type: 'ai:plan',
     mode: 'mock',
-    origin,
+    origin: payload.origin,
+    tabId: payload.tabId,
     prompt: 'Test login with valid and invalid credentials, check error messages, and verify navigation.',
-  }), demo.url);
+  }), { origin: demo.url, tabId: demoTabId });
   const plan = planResponse.plan;
   if (plan && plan.cases && plan.cases[0]) {
     const textStep = plan.cases[0].steps.find((step) => step.type === 'assertText');
@@ -241,7 +243,7 @@ try {
     'Mock AI plan is proposed, editable, and not executed',
     !!planResponse.ok && plan.source === 'mock' && plan.proposed === true && aiSaved.ok && aiSaved.test.source === 'ai'
       && !(runsAfterAi.runs || []).some((run) => run.testId === aiSaved.test.id),
-    planResponse.ok ? `${plan.cases.length} cases, source ${plan.source}` : planResponse.message,
+    planResponse.ok ? `${plan.cases.length} cases, source ${plan.source}${aiSaved && aiSaved.ok ? '' : `; save: ${aiSaved && aiSaved.message}`}` : planResponse.message,
   );
 
   const versionPage = await browser.newPage();

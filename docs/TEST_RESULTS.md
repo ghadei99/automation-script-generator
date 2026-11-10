@@ -313,3 +313,35 @@ A second Start failed with `Duplicate script ID 'asg-recorder'` because Stop tri
 `node test/playwright-export.mjs`: the success spec passed. The deliberate failure expected `http://127.0.0.1:59866/not-the-app` and received `http://127.0.0.1:59866/app.html`. The password was absent.
 
 `node test/persistence.mjs`: product save, Chrome restart, and reopened steps passed. Demo port `59888`. The extensions Reload check is still the debug-session limitation.
+
+## Live locator binding, 2026-11-10
+
+Branch `feature/live-ai-verification`, from `origin/master` at `f71bcbd`.
+
+A live plan reached the runner with no selector. The provider was not asked for an element reference, `validatePlan` dropped anything that was not a selector object, and `groundPlan` only removed selectors. The step editor could not add one. Mock mode had been attaching selectors locally, which is why those tests passed.
+
+The model now receives element references, roles, labels, and control types. It does not receive CSS. `bindPlan` attaches a verified locator when the reference matches one element, or when the action has one semantic match. Duplicate labels, invented references, and structural CSS stay unresolved. Approval and execution stop on those steps. After navigation, revalidation checks the current page and does not keep a stale target.
+
+`npm test`: 32 passed, 0 failed, 1 skipped. The skip is `test/live-ai.test.mjs` in this shell, which does not have the proxy variables. The new tests cover a valid reference, a unique semantic match, duplicate labels, an invented reference, a structural locator, a stale locator, the captured no-selector provider plan, secret parameters, unresolved execution, and Playwright export text.
+
+`node test/acceptance.mjs`: 16/16 passed. Demo port `60199`.
+
+`node test/ai-login.mjs`: 6/6 passed. An empty expected result stayed editable, its Approve button stayed disabled, and the corrected assertion passed. The wrong assertion expected `Not the real error` and received `Invalid credentials`.
+
+`node test/ai-flow.mjs`: the run immediately after acceptance timed out once. Run on its own, 4/4 passed. The wrong message was `Invalid credentials`.
+
+`node test/screenshot.mjs`: 5 passed, 0 failed. No image was invented.
+
+`node test/playwright-export.mjs`: the success spec passed. The deliberate failure expected `http://127.0.0.1:60348/not-the-app` and received `http://127.0.0.1:60348/app.html`. The password was absent.
+
+`node test/shop.mjs`: 5 passed, 0 failed. Demo port `60398`. The official Playwright runner passed the export.
+
+`node test/persistence.mjs`: product save, Chrome restart, and reopened steps passed. Demo port `60429`. The extensions Reload check is still the debug-session limitation.
+
+`node test/recorder-start.mjs` in Chrome/157.0.8103.39: 18/18 passed. Origins `http://127.0.0.1:60461` and `http://127.0.0.1:60462`. The Chrome restart origin was `http://127.0.0.1:60500`.
+
+One GPT-4.1-mini request on `http://127.0.0.1:60971/` returned `Invalid Login Credentials` and `Successful Login`. Provider usage was prompt 323, completion 438, total 761. No cost was reported. The steps were `data-testid=username`, `data-testid=password`, `data-testid=remember`, `data-testid=submit`, and `data-testid=error`. The password step was `{{Password}}`.
+
+The browser session closed before Approve because the verification script called a missing Puppeteer method. A second provider call was not made. The captured steps were replayed through the packaged runner on `http://127.0.0.1:61283/`. Invalid login passed, including the observed error `Invalid credentials`. The wrong assertion expected `Not the real error` and received `Invalid credentials`. Successful login reached `Welcome, Demo`. Revalidation on `/app.html` resolved `testid=welcome`. The wrong heading expected `Welcome, Nobody` and received `Welcome, Demo`.
+
+The official Playwright runner passed the export. The failing spec expected `Welcome, Nobody` and received `Welcome, Demo` from `getByTestId('welcome')`. The password literal was absent. `TEST_PASSWORD` supplied the secret.

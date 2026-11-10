@@ -53,20 +53,13 @@ function publicError(text) {
 }
 
 function redactEvidence(items) {
-  const allowed = ['tag', 'type', 'testid', 'id', 'name', 'role', 'label', 'text', 'hidden', 'form'];
+  const allowed = ['ref', 'tag', 'type', 'role', 'label', 'text', 'name', 'form'];
   return items.slice(0, 24).map((item) => {
     if (!item || typeof item !== 'object') return {};
     const out = {};
     for (const key of allowed) {
-      if (item[key] == null) continue;
-      out[key] = key === 'hidden' ? !!item[key] : String(item[key]).slice(0, 80);
-    }
-    if (Array.isArray(item.locators)) {
-      out.locators = item.locators.slice(0, 3).map((locator) => ({
-        strategy: String(locator && locator.strategy || '').slice(0, 20),
-        value: String(locator && locator.value || '').slice(0, 120),
-        name: String(locator && locator.name || '').slice(0, 80),
-      })).filter((locator) => locator.strategy && locator.value);
+      if (item[key] == null || item[key] === '') continue;
+      out[key] = String(item[key]).slice(0, 80);
     }
     return out;
   });
@@ -176,7 +169,7 @@ async function handle(request, response) {
         messages: [
           {
             role: 'system',
-            content: 'Return only JSON with title, summary, and cases. A case has name and steps. Step types: navigate, click, input, checkbox, radio, select, submit, wait, assertVisible, assertText, assertUrl, assertExists. Use a selector only when summary lists it. Password steps set secret true and paramName, and omit value. Leave unknown expected text empty. No JavaScript, HTML, or cookies.',
+            content: 'Return only JSON with title, summary, and cases. A case has name and steps. A step has type and, when it uses an element, elementRef copied exactly from summary.items[].ref. Do not invent element refs, CSS, or selectors. Step types: navigate, click, input, checkbox, radio, select, submit, wait, assertVisible, assertText, assertUrl, assertExists. Password steps set secret true and paramName, and omit value. Leave expected empty when that text is not in summary.messages. No JavaScript, HTML, or cookies.',
           },
           {
             role: 'user',

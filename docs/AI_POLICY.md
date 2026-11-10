@@ -18,8 +18,8 @@ The model is asked for a fixed shape: a title, a summary, and cases of steps. Th
 
 Before a plan is shown:
 
-- The page summary is built locally. It is the heading, at most 24 interactive elements, verified locator candidates, form ids, and at most four visible validation messages. Field values, cookies, and tokens are not included.
-- Selectors that were not in that summary are removed.
+- The page summary is built locally. It is the heading, at most 24 interactive elements, a stable element reference, role, accessible name, label, control type, and form id, plus at most four visible validation messages. Field values, cookies, tokens, and CSS selectors are not sent to the model.
+- The model returns an element reference from that summary. The extension resolves it to a verified locator on the open page. A selector the model invents is discarded. A step with no unique target stays unresolved and cannot be approved or run.
 - Password-like inputs become `{ secret: true, paramName }` with the value deleted.
 - Navigation URLs that are not `http:` or `https:` are deleted.
 - The plan is marked proposed. Replay starts only after the user approves it and then chooses Run.
