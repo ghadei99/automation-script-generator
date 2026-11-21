@@ -793,6 +793,9 @@ async function handleMessage(message, sender) {
     if (!steps.length) throw new Error('This test has no steps.');
     const block = ASG.approvalBlock(steps, 'execution');
     if (block) throw new Error(block);
+    const params = message.params && typeof message.params === 'object' && !Array.isArray(message.params) ? message.params : {};
+    const missing = ASG.missingSecretParams(steps, params);
+    if (missing.length) throw new Error(ASG.missingSecretMessage(missing));
     await chrome.tabs.get(message.tabId);
     stopRequested = false;
     activeRun = {
@@ -811,7 +814,6 @@ async function handleMessage(message, sender) {
     };
     await persistActive();
     await updateBadge();
-    const params = message.params || {};
     runLoop(steps, message.tabId, params).catch((error) => console.error('run failed', error));
     return { ok: true, run: { ...activeRun, results: [] } };
   }

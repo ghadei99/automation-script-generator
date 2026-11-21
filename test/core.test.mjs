@@ -121,6 +121,23 @@ test('passwords and tokens are removed before a step or API call is kept', () =>
   assert.doesNotMatch(session.apiCalls[0].responseBody, /eyJ/);
 });
 
+test('runtime secrets are named consistently and block a run while any value is missing', () => {
+  const steps = [
+    { type: 'input', secret: true, paramName: 'password' },
+    { type: 'input', secret: true, paramName: 'api token' },
+    { type: 'input', value: 'demo' },
+  ];
+  assert.deepEqual(schema.listSecretParams(steps), ['password', 'apitoken']);
+  assert.deepEqual(schema.missingSecretParams(steps, {}), ['password', 'apitoken']);
+  assert.deepEqual(schema.missingSecretParams(steps, { password: 'present', apitoken: '' }), ['apitoken']);
+  assert.deepEqual(schema.missingSecretParams(steps, { password: 'present', apitoken: 'present' }), []);
+  const message = schema.missingSecretMessage(['password', 'apitoken']);
+  assert.match(message, /"password"/);
+  assert.match(message, /"apitoken"/);
+  assert.match(message, /Nothing was run/);
+  assert.equal(message.includes('present'), false);
+});
+
 test('sensitive fields are recognized without treating usernames as secrets', () => {
   const password = fakeField({ type: 'password', name: 'password', autocomplete: 'current-password' });
   const username = fakeField({ type: 'text', name: 'username' });

@@ -7,6 +7,7 @@ let selectedStep = 0;
 let selectedTestId = '';
 let selectedRunId = '';
 let exportFramework = 'playwright';
+const runtimeSecrets = new Map();
 let aiPlan = null;
 let aiPromptDraft = null;
 let dirty = false;
@@ -228,7 +229,14 @@ async function refreshTarget() {
   }
 }
 
+function rememberRuntimeSecrets() {
+  document.querySelectorAll('input[data-param]').forEach((input) => {
+    if (input.dataset.param) runtimeSecrets.set(input.dataset.param, input.value);
+  });
+}
+
 function render() {
+  rememberRuntimeSecrets();
   updateChrome();
   const main = document.getElementById('main');
   main.replaceChildren();
@@ -675,7 +683,7 @@ function renderRun() {
   wrap.append(h('div', { class: 'row' },
     h('select', { id: 'runChoice', onchange: (event) => { selectedTestId = event.target.value; render(); } },
       ...options.map((option) => h('option', { value: option.id, selected: option.id === selectedTestId }, option.name))),
-    h('button', { class: 'primary', id: 'runButton', onclick: runChosen }, 'Run'),
+    h('button', { type: 'button', class: 'primary', id: 'runButton', onclick: runChosen }, 'Run'),
     h('button', { class: 'danger', id: 'stopRun', onclick: () => send({ type: 'run:stop' }) }, 'Stop execution')
   ));
   if (chosen.proposed || chosen.source === 'ai') {
@@ -686,7 +694,13 @@ function renderRun() {
     wrap.append(h('div', { class: 'card stack' },
       h('strong', {}, 'Runtime secrets'),
       h('p', { class: 'muted' }, 'These values are sent only for this run and are not written to extension storage.'),
-      ...secrets.map((name) => labeled(name, h('input', { type: 'password', 'data-param': name, autocomplete: 'off' })))
+      ...secrets.map((name) => labeled(name, h('input', {
+        type: 'password',
+        'data-param': name,
+        autocomplete: 'off',
+        value: runtimeSecrets.get(name) || '',
+        oninput: (event) => runtimeSecrets.set(name, event.target.value),
+      })))
     ));
   }
   wrap.append(renderActiveRun());
@@ -768,11 +782,18 @@ async function runChosen() {
     updateChrome();
     return;
   }
-  const params = {};
-  document.querySelectorAll('[data-param]').forEach((input) => { params[input.dataset.param] = input.value; });
+  rememberRuntimeSecrets();
   const selectedSteps = selectedTestId === 'draft'
     ? ((model.session && model.session.steps) || [])
     : (((model.tests.find((item) => item.id === selectedTestId) || {}).steps) || []);
+  const params = {};
+  ASG.listSecretParams(selectedSteps).forEach((name) => { params[name] = runtimeSecrets.get(name) || ''; });
+  const missing = ASG.missingSecretParams(selectedSteps, params);
+  if (missing.length) {
+    errorText = ASG.missingSecretMessage(missing);
+    updateChrome();
+    return;
+  }
   const block = ASG.approvalBlock(selectedSteps, 'execution');
   if (block) {
     errorText = block;
