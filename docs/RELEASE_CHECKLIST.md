@@ -17,6 +17,14 @@ Status on 2026-11-26 for version 1.0.0. Items are checked only when a command in
 - [x] `chrome://` pages are rejected with an explicit message.
 - [x] `npm test` passes (18 passed, 1 skipped). `node test/acceptance.mjs` passes (16 scenarios) on Chrome 156.0.8078.80.
 
+## 1.0.1 test management
+
+- [x] `npm test`: 47 passed, 0 failed, 1 skipped. The skip is `test/live-ai.test.mjs` because this shell has no `PROXY_AUTH_TOKEN` or `AI_API_KEY`. Port 8787 was open. This session did not call the provider.
+- [x] Chrome 158.0.8127.38: `test/library-ui.mjs` 10/10, recorder start, acceptance 16/16, persistence save and Chrome restart, mock AI login, Playwright export, runtime secrets, shop, and screenshot messaging.
+- [x] Persistence in-session reload still ends on `chrome-error://chromewebdata/` in this debug session. A full Chrome restart restored the saved test. That reload is not a product pass.
+- [x] `node scripts/capture-store-ui.mjs`: 8/8. Chrome loaded `dist/browser-test-recorder-1.0.1.zip`. The store controller says Live AI is not included. `dist/browser-test-recorder-1.0.0.zip` is unchanged, SHA-256 `f74d93eeab8393eb4becce2577a6958473dc9cd408dd2a9b736df7845c634b4a`.
+- [ ] Chrome Web Store submission. Developer registration payment is pending. Do not submit.
+
 ## 1.0.0 store candidate
 
 - [x] `npm test`: 42 passed, 0 failed, 1 skipped. The skip is `test/live-ai.test.mjs` when the shell has no provider credentials.

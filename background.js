@@ -9,6 +9,7 @@ importScripts(
   'lib/ai.js',
   'lib/runner.js',
   'lib/registration.js',
+  'lib/library.js',
   'lib/build.js'
 );
 
@@ -762,6 +763,15 @@ async function handleMessage(message, sender) {
     test.updatedAt = Date.now();
     await chrome.storage.local.set({ tests });
     return { ok: true, test };
+  }
+
+  if (message.type === 'tests:duplicate') {
+    const tests = await getTests();
+    const test = tests.find((item) => item.id === message.id);
+    const copy = ASG.duplicateTest(test, () => ASG.createId());
+    tests.unshift(copy);
+    await chrome.storage.local.set({ tests });
+    return { ok: true, test: copy };
   }
 
   if (message.type === 'tests:delete') {

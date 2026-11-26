@@ -16,7 +16,7 @@ npm install
 npm run package
 ```
 
-The zip is `dist/browser-test-recorder-1.0.0.zip`. Unzip it and load that folder with Load unpacked to review the store build. That build does not offer Live AI. Do not submit the zip while the developer registration payment is pending.
+The zip is `dist/browser-test-recorder-1.0.1.zip`. The 1.0.0 zip is kept beside it. Unzip it and load that folder with Load unpacked to review the store build. That build does not offer Live AI. Do not submit the zip while the developer registration payment is pending.
 
 ## Record, run, and report
 

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const PACKAGE_VERSION = '1.0.0';
+export const PACKAGE_VERSION = '1.0.1';
 export const PACKAGE_FILES = [
   'manifest.json',
   'background.js',
@@ -28,6 +28,7 @@ export const PACKAGE_FILES = [
   'lib/runner.js',
   'lib/registration.js',
   'lib/report.js',
+  'lib/library.js',
   'lib/build.js',
   'icons/icon16.png',
   'icons/icon32.png',

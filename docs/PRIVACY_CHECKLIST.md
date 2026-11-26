@@ -1,6 +1,6 @@
 # Privacy practices checklist
 
-Use this when filling the Chrome Web Store privacy form. Answer from the 1.0.0 store package, not from the development-only live proxy.
+Use this when filling the Chrome Web Store privacy form. Answer from the 1.0.1 store package, not from the development-only live proxy.
 
 | Practice | Store package |
 | --- | --- |

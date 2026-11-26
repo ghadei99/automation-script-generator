@@ -12,7 +12,7 @@ Mock AI does not have this problem. The proposal rules are in `lib/ai.js`, which
 
 ## Store package
 
-`npm run package` writes `dist/browser-test-recorder-1.0.0.zip`. In that zip, `lib/build.js` sets `storeBuild` to true. The packaged controller:
+`npm run package` writes `dist/browser-test-recorder-1.0.1.zip`. In that zip, `lib/build.js` sets `storeBuild` to true. The packaged controller:
 
 - labels the assistant **Mock AI**
 - states that **Live AI is not included in this package**

@@ -60,6 +60,12 @@ async function checkboxState(extensionPage) {
 }
 
 async function waitForCheckbox(extensionPage, expected) {
+  await extensionPage.evaluate(() => {
+    if (!document.getElementById('networkCapture')) {
+      const recorder = document.querySelector('[data-view="recorder"]');
+      if (recorder) recorder.click();
+    }
+  });
   let last = null;
   const start = Date.now();
   while (Date.now() - start < 4000) {
@@ -179,6 +185,7 @@ try {
     }));
     const ui = await (await created).page();
     ui.on('dialog', (dialog) => dialog.dismiss());
+    await ui.evaluate(() => document.querySelector('[data-view="recorder"]').click());
     await pageB.bringToFront();
     await ui.waitForFunction((url) => {
       const button = document.getElementById('startButton');

@@ -373,3 +373,29 @@ Chrome for the extension runs: Chrome/158.0.8127.38.
 `node scripts/capture-store-ui.mjs`: 6 passed. The Results buttons downloaded an HTML report and a JSON report. The JSON kept the failed assertion and omitted screenshot bytes. Chrome loaded `dist/browser-test-recorder-1.0.0.zip` and the controller said Live AI is not included.
 
 `npm run package`: Chrome loaded the zip. The package manifest is version 1.0.0.
+
+## 1.0.1 test management, 2026-11-26
+
+Chrome for the extension runs: Chrome/158.0.8127.38.
+
+`npm test`: 47 passed, 0 failed, 1 skipped. The skip is `test/live-ai.test.mjs` because `PROXY_AUTH_TOKEN` and `AI_API_KEY` were not set in this shell. A process was listening on 127.0.0.1:8787. This session did not call the provider.
+
+`node test/library-ui.mjs`: 10/10. Empty Home does not invent a result. Search, the AI filter, rename, duplicate, cancelled delete, confirmed delete, and navigation during recording passed. The deleted copy was gone and the original failed run remained.
+
+`node test/recorder-start.mjs`: passed, including stop, start again, and a Chrome restart.
+
+`node test/acceptance.mjs`: 16/16.
+
+`node test/persistence.mjs`: save, Chrome restart, and restored steps passed. The in-session extension reload remains the debug-session limitation.
+
+`node test/ai-login.mjs`: 6/6.
+
+`node test/playwright-export.mjs`: exported login passed, the deliberate wrong URL failed as intended, and the password was absent.
+
+`node test/runtime-secrets.mjs`: passed.
+
+`node test/shop.mjs`: 5/5.
+
+`node test/screenshot.mjs`: 5/5.
+
+`node scripts/capture-store-ui.mjs`: 8/8. Home, the empty library, Recorder, Results, Mock AI, and the store package were captured from Chrome. The store package says Live AI is not included. The 1.0.1 zip SHA-256 is `08e231cb76be6dfeb0f9c3a46fdb6e205869a56e3e2616e1a171ea0b9e8470fa`. The 1.0.0 zip hash did not change.

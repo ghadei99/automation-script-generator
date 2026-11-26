@@ -5,7 +5,7 @@ import { startDemo } from '../demo/server.mjs';
 import { createPackage, inspectPackage } from './package-extension.mjs';
 
 const chromePath = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const shots = path.resolve('store/screenshots');
+const shots = path.resolve('store/screenshots/1.0.1');
 const checks = [];
 
 function record(name, pass, detail) {
@@ -41,6 +41,7 @@ async function openController(browser, extensionId) {
   }));
   const page = await (await created).page();
   page.on('dialog', (dialog) => dialog.accept());
+  await page.setViewport({ width: 1120, height: 760 });
   await page.waitForSelector('#nav');
   await bootstrap.close();
   return page;
@@ -65,6 +66,14 @@ try {
   await site.goto(demo.url, { waitUntil: 'domcontentloaded' });
   const page = await openController(browser, extensionId);
   await page.waitForFunction((url) => (document.getElementById('targetLabel') || {}).textContent.includes(url), {}, demo.url);
+  await page.waitForFunction(() => document.querySelector('h2') && document.querySelector('h2').textContent === 'Home');
+  await shot(page, '00-home.png');
+  record('Home is the opening screen', true, 'Screenshot 00-home.png');
+  await page.evaluate(() => document.querySelector('[data-view="library"]').click());
+  await page.waitForFunction(() => document.body.innerText.includes('No saved tests yet.'));
+  await shot(page, '05-library.png');
+  record('Empty library has a useful message', true, 'Screenshot 05-library.png');
+  await page.evaluate(() => document.querySelector('[data-view="recorder"]').click());
   await page.waitForFunction(() => document.querySelector('h2') && document.querySelector('h2').textContent === 'Recorder');
   await shot(page, '01-recorder.png');
   record('Recorder screen is idle before Start', true, 'Screenshot 01-recorder.png');

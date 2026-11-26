@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Browser Test Recorder",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Record one site you choose, replay the steps in Chrome, and export Playwright, Selenium, Cypress, or REST Assured.",
   "icons": {
     "16": "icons/icon16.png",

@@ -1,5 +1,12 @@
 # Release notes
 
+## 1.0.1 — 26 November 2026
+
+- Home shows saved-test and execution counts from extension storage, plus the latest run and whether recording is on.
+- Test library searches by name, filters recorded and AI-created tests, and can rename, duplicate, delete, load, or open a saved test.
+- A duplicate receives a new id. Deleting a test asks first and leaves past results in place.
+- The store package still disables remote AI planning. `dist/browser-test-recorder-1.0.0.zip` is unchanged. `npm run package` writes `dist/browser-test-recorder-1.0.1.zip`.
+
 ## 1.0.0 — 26 November 2026
 
 First public-release candidate. Not submitted to the Chrome Web Store.

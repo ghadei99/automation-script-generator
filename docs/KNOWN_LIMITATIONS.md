@@ -1,6 +1,6 @@
 # Known limitations
 
-Version 1.0.0.
+Version 1.0.1.
 
 - Failure screenshots require Chrome to allow `captureVisibleTab`. A fresh click on the extension icon can grant that for the current page. Navigation clears it. The result then says "Screenshot unavailable" and does not pretend an image exists.
 - The store package does not include Live AI. Remote plans remain a policy risk and stay in the development tree only. See `docs/STORE_POLICY.md`.

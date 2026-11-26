@@ -92,6 +92,7 @@ try {
   const site = await browser.newPage();
   await site.goto(demo.url, { waitUntil: 'domcontentloaded' });
   const extensionPage = await openExtension(browser, extensionId);
+  await extensionPage.evaluate(() => document.querySelector('[data-view="recorder"]').click());
   await site.bringToFront();
   await extensionPage.waitForFunction(
     (url) => {

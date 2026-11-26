@@ -31,4 +31,6 @@ Capture these from the running controller and upload the PNGs in `store/screensh
 3. AI assistant labeled Mock AI.
 4. The store package stating that Live AI is not included.
 
+Version 1.0.1 also captured Home and the empty Test library in `store/screenshots/1.0.1/`. The 1.0.0 captures are in `store/screenshots/1.0.0/`.
+
 Do not use a mockup, a stock photo, or a claim that the extension always captures screenshots.

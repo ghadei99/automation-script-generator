@@ -1,7 +1,7 @@
 {
   "name": "automation-script-generator",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Chrome extension that records a site you choose and replays it as a test.",
   "scripts": {
     "test": "node --test test/*.test.mjs",

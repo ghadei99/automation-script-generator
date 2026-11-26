@@ -14,9 +14,11 @@
     <div id="statusPill" class="pill idle">Idle</div>
   </header>
   <div class="layout">
-    <nav id="nav">
-      <button type="button" data-view="recorder" class="active">Recorder</button>
+    <nav id="nav" aria-label="Sections">
+      <button type="button" data-view="home">Home</button>
+      <button type="button" data-view="recorder">Recorder</button>
       <button type="button" data-view="steps">Test steps</button>
+      <button type="button" data-view="library">Test library</button>
       <button type="button" data-view="run">Run tests</button>
       <button type="button" data-view="results">Results</button>
       <button type="button" data-view="export">Code export</button>
@@ -33,6 +35,7 @@
   <script src="lib/selectors.js"></script>
   <script src="lib/ai.js"></script>
   <script src="lib/report.js"></script>
+  <script src="lib/library.js"></script>
   <script src="lib/build.js"></script>
   <script src="codegen.js"></script>
   <script src="popup.js"></script>

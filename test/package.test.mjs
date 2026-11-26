@@ -14,7 +14,7 @@ test('the store package keeps the manifest at the root and leaves out developmen
     const packed = await createPackage({ outDir: directory });
     const inspected = await inspectPackage(packed.zipPath);
     assert.equal(inspected.manifest.manifest_version, 3);
-    assert.equal(inspected.manifest.version, '1.0.0');
+    assert.equal(inspected.manifest.version, '1.0.1');
     assert.equal(inspected.manifest.name, 'Browser Test Recorder');
     await rm(inspected.directory, { recursive: true, force: true });
   } finally {

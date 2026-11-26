@@ -1,5 +1,5 @@
-const views = ['recorder', 'steps', 'run', 'results', 'export', 'ai', 'settings'];
-let view = 'recorder';
+const views = ['home', 'recorder', 'steps', 'library', 'run', 'results', 'export', 'ai', 'settings'];
+let view = 'home';
 let model = { session: null, tests: [], runs: [], activeRun: null, settings: defaultSettings() };
 let targetTab = null;
 let errorText = '';
@@ -9,6 +9,8 @@ let selectedRunId = '';
 let exportFramework = 'playwright';
 const runtimeSecrets = new Map();
 let includeEvidence = false;
+let libraryQuery = '';
+let librarySource = 'all';
 let aiPlan = null;
 let aiPromptDraft = null;
 let dirty = false;
@@ -64,7 +66,9 @@ function updateChrome() {
   if (!targetTab) target.textContent = 'No browser tab is available.';
   else target.textContent = targetTab.url || 'Blank tab';
   document.querySelectorAll('#nav button').forEach((button) => {
-    button.classList.toggle('active', button.dataset.view === view);
+    const active = button.dataset.view === view;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-current', active ? 'page' : 'false');
   });
   const bar = document.getElementById('errorBar');
   bar.hidden = !errorText;
@@ -241,8 +245,208 @@ function render() {
   updateChrome();
   const main = document.getElementById('main');
   main.replaceChildren();
-  const builders = { recorder: renderRecorder, steps: renderSteps, run: renderRun, results: renderResults, export: renderExport, ai: renderAi, settings: renderSettings };
+  const builders = {
+    home: renderHome,
+    recorder: renderRecorder,
+    steps: renderSteps,
+    library: renderLibrary,
+    run: renderRun,
+    results: renderResults,
+    export: renderExport,
+    ai: renderAi,
+    settings: renderSettings,
+  };
   main.append((builders[view] || renderRecorder)());
+}
+
+function showView(next) {
+  const active = document.activeElement;
+  const main = document.getElementById('main');
+  if (active && main && main.contains(active) && active.matches && active.matches('input, textarea, select')) {
+    active.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  view = next;
+  errorText = '';
+  render();
+}
+
+function recordingLabel(status) {
+  if (status === 'recording') return 'Recording';
+  if (status === 'paused') return 'Paused';
+  if (status === 'stopped') return 'Stopped';
+  return 'Idle';
+}
+
+function renderHome() {
+  const stats = ASG.dashboardStats(model.tests, model.runs, model.session);
+  const latest = stats.latest;
+  const recording = model.session && model.session.status === 'recording';
+  const section = h('section', {},
+    h('h2', {}, 'Home'),
+    h('p', { class: 'muted' }, 'Counts come from tests and runs saved in this browser.'),
+    h('div', { class: 'metrics' },
+      metric('Saved tests', String(stats.savedTests)),
+      metric('Recent executions', String(stats.executions)),
+      metric('Passed', String(stats.passed), 'passed'),
+      metric('Failed', String(stats.failed), 'failed')
+    ),
+    h('div', { class: 'card stack' },
+      h('strong', {}, 'Latest execution'),
+      latest
+        ? h('div', { class: 'row' }, h('span', { class: `pill ${latest.status}` }, latest.status), h('span', { class: 'wrap' }, latest.testName))
+        : h('div', { class: 'muted' }, 'No executions yet.')
+    ),
+    h('div', { class: 'card row' },
+      h('strong', {}, 'Recording'),
+      h('span', { class: `pill ${stats.recording}` }, recordingLabel(stats.recording))
+    ),
+    h('div', { class: 'row' },
+      h('button', { class: 'primary', disabled: recording, onclick: startRecording }, 'Start Recording'),
+      h('button', { onclick: () => showView('library') }, 'Open Test Library'),
+      h('button', { onclick: () => showView('run') }, 'Run a saved test'),
+      h('button', { onclick: () => showView('results') }, 'View Results')
+    )
+  );
+  return section;
+}
+
+function metric(label, value, tone) {
+  return h('div', { class: 'metric' },
+    h('span', { class: tone ? `metric-value ${tone}` : 'metric-value' }, value),
+    h('span', { class: 'muted' }, label)
+  );
+}
+
+function renderLibrary() {
+  const section = h('section', {},
+    h('h2', {}, 'Test library'),
+    h('div', { class: 'row' },
+      h('input', {
+        id: 'librarySearch',
+        type: 'search',
+        value: libraryQuery,
+        placeholder: 'Search by test name',
+        'aria-label': 'Search tests by name',
+        oninput: (event) => {
+          libraryQuery = event.target.value;
+          fillLibrary(document.getElementById('libraryList'));
+        },
+      }),
+      h('select', {
+        id: 'libraryFilter',
+        'aria-label': 'Filter tests',
+        onchange: (event) => {
+          librarySource = event.target.value;
+          fillLibrary(document.getElementById('libraryList'));
+        },
+      },
+      h('option', { value: 'all', selected: librarySource === 'all' }, 'All tests'),
+      h('option', { value: 'recorded', selected: librarySource === 'recorded' }, 'Recorded'),
+      h('option', { value: 'ai', selected: librarySource === 'ai' }, 'AI-created'))
+    )
+  );
+  const list = h('div', { id: 'libraryList', class: 'stack' });
+  section.append(list);
+  fillLibrary(list);
+  return section;
+}
+
+function fillLibrary(list) {
+  if (!list) return;
+  list.replaceChildren();
+  if (!model.tests.length) {
+    list.append(h('div', { class: 'card muted' }, 'No saved tests yet. Record a workflow or approve an AI proposal, then save it.'));
+    return;
+  }
+  const visible = ASG.filterTests(model.tests, libraryQuery, librarySource);
+  if (!visible.length) {
+    list.append(h('div', { class: 'card muted' }, 'No tests match this search.'));
+    return;
+  }
+  visible.forEach((test) => {
+    const steps = Array.isArray(test.steps) ? test.steps.length : 0;
+    const card = h('article', { class: 'card stack test-card' },
+      h('div', { class: 'row' },
+        h('strong', { class: 'wrap' }, test.name || 'Untitled test'),
+        h('span', { class: test.source === 'ai' ? 'pill paused' : 'pill idle' }, test.source === 'ai' ? 'AI' : 'Recorded')
+      ),
+      h('div', { class: 'muted' }, `${steps} step${steps === 1 ? '' : 's'}`),
+      h('div', { class: 'row' },
+        h('input', {
+          type: 'text',
+          value: test.name || '',
+          'data-rename': test.id,
+          'aria-label': `Rename ${test.name || 'test'}`,
+        }),
+        h('button', { onclick: () => renameSavedTest(test.id) }, 'Rename'),
+        h('button', { onclick: () => duplicateSavedTest(test.id) }, 'Duplicate'),
+        h('button', { class: 'danger', onclick: () => deleteSavedTest(test) }, 'Delete'),
+        h('button', { onclick: () => loadTestById(test.id) }, 'Load into editor'),
+        h('button', { class: 'primary', onclick: () => openRun(test.id) }, 'Run')
+      )
+    );
+    list.append(card);
+  });
+}
+
+async function renameSavedTest(id) {
+  errorText = '';
+  const input = document.querySelector(`[data-rename="${CSS.escape(id)}"]`);
+  try {
+    await send({ type: 'tests:rename', id, name: input ? input.value : '' });
+    await reload();
+    render();
+  } catch (error) {
+    errorText = error.message;
+    updateChrome();
+  }
+}
+
+async function duplicateSavedTest(id) {
+  errorText = '';
+  try {
+    const response = await send({ type: 'tests:duplicate', id });
+    selectedTestId = response.test.id;
+    await reload();
+    render();
+  } catch (error) {
+    errorText = error.message;
+    updateChrome();
+  }
+}
+
+async function deleteSavedTest(test) {
+  if (!window.confirm(`Delete "${test.name}"? This does not remove past results.`)) return;
+  errorText = '';
+  try {
+    await send({ type: 'tests:delete', id: test.id });
+    if (selectedTestId === test.id) selectedTestId = '';
+    await reload();
+    render();
+  } catch (error) {
+    errorText = error.message;
+    updateChrome();
+  }
+}
+
+async function loadTestById(id) {
+  errorText = '';
+  try {
+    await send({ type: 'session:load', id });
+    selectedStep = 0;
+    selectedTestId = id;
+    await reload();
+    view = 'steps';
+    render();
+  } catch (error) {
+    errorText = error.message;
+    updateChrome();
+  }
+}
+
+function openRun(id) {
+  selectedTestId = id;
+  showView('run');
 }
 
 function renderRecorder() {
@@ -337,9 +541,11 @@ async function startRecording() {
     }
   }
   try {
-    const networkCapture = document.getElementById('networkCapture').checked;
+    const networkBox = document.getElementById('networkCapture');
+    const networkCapture = !!(networkBox && networkBox.checked);
     await send({ type: 'session:start', tabId: targetTab.id, networkCapture });
     await reload();
+    view = 'recorder';
     render();
   } catch (error) {
     errorText = error.message;
@@ -1166,10 +1372,8 @@ async function saveSettings() {
 
 document.getElementById('nav').addEventListener('click', (event) => {
   const button = event.target.closest('button');
-  if (!button) return;
-  view = button.dataset.view;
-  errorText = '';
-  render();
+  if (!button || !button.dataset.view) return;
+  showView(button.dataset.view);
 });
 
 document.addEventListener('focusin', (event) => {

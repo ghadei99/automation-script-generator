@@ -1,7 +1,7 @@
 # Privacy policy
 
 Browser Test Recorder
-Version 1.0.0
+Version 1.0.1
 Effective 26 November 2026
 
 This policy describes the Browser Test Recorder extension published for the Chrome Web Store.

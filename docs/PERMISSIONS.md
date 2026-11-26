@@ -1,6 +1,6 @@
 # Permission justification
 
-Product: Browser Test Recorder 1.0.0. Manifest V3.
+Product: Browser Test Recorder 1.0.1. Manifest V3.
 
 | Permission | Why it is requested | What it is not used for |
 | --- | --- | --- |
