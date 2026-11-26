@@ -345,3 +345,31 @@ One GPT-4.1-mini request on `http://127.0.0.1:60971/` returned `Invalid Login Cr
 The browser session closed before Approve because the verification script called a missing Puppeteer method. A second provider call was not made. The captured steps were replayed through the packaged runner on `http://127.0.0.1:61283/`. Invalid login passed, including the observed error `Invalid credentials`. The wrong assertion expected `Not the real error` and received `Invalid credentials`. Successful login reached `Welcome, Demo`. Revalidation on `/app.html` resolved `testid=welcome`. The wrong heading expected `Welcome, Nobody` and received `Welcome, Demo`.
 
 The official Playwright runner passed the export. The failing spec expected `Welcome, Nobody` and received `Welcome, Demo` from `getByTestId('welcome')`. The password literal was absent. `TEST_PASSWORD` supplied the secret.
+
+## 1.0.0 release candidate, 2026-11-26
+
+Chrome for the extension runs: Chrome/158.0.8127.38.
+
+`npm test`: 42 passed, 0 failed, 1 skipped. The skip is the live provider test when the shell has no credentials.
+
+`node --test test/live-ai.test.mjs`, using the proxy already listening on 127.0.0.1:8787: 1 passed. This does not repeat the Demo Bank login in the controller. That full login was not run again in this release session.
+
+`node test/recorder-start.mjs`: passed, including stop, start again, and a Chrome restart.
+
+`node test/acceptance.mjs`: 16 passed.
+
+`node test/persistence.mjs`: save, Chrome restart, and restored steps passed. The in-session extension reload remains the debug-session limitation and is not a product pass.
+
+`node test/ai-login.mjs`: passed.
+
+`node test/playwright-export.mjs`: exported login passed, the deliberate wrong URL failed as intended, and the password was absent.
+
+`node test/runtime-secrets.mjs`: passed.
+
+`node test/shop.mjs`: 5 passed.
+
+`node test/screenshot.mjs`: 5 passed after the Results view kept Chrome's screenshot reason. The first run in this session failed that one check because the reason was hidden. No image was invented.
+
+`node scripts/capture-store-ui.mjs`: 6 passed. The Results buttons downloaded an HTML report and a JSON report. The JSON kept the failed assertion and omitted screenshot bytes. Chrome loaded `dist/browser-test-recorder-1.0.0.zip` and the controller said Live AI is not included.
+
+`npm run package`: Chrome loaded the zip. The package manifest is version 1.0.0.

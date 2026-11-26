@@ -167,7 +167,22 @@ pre.locator {
 }
 .passed { color: #067647; }
 .failed { color: #b42318; }
-.skipped { color: #667085; }
+.skipped, .unknown { color: #667085; }
+.wrap { overflow-wrap: anywhere; white-space: normal; min-width: 0; }
+.counts { display: flex; gap: 12px; flex-wrap: wrap; font-weight: 600; }
+.result-step { margin: 8px 0; padding-top: 8px; border-top: 1px solid #eef1f4; }
+.run-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 6px;
+}
+.run-row.selected { outline: 2px solid #175cd3; }
+.run-row .wrap { flex: 1; }
+.report-summary img { display: block; max-width: 100%; height: auto; }
+header h1, header p, .step-copy { overflow-wrap: anywhere; }
 footer {
   position: sticky;
   bottom: 0;

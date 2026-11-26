@@ -8,6 +8,7 @@ let selectedTestId = '';
 let selectedRunId = '';
 let exportFramework = 'playwright';
 const runtimeSecrets = new Map();
+let includeEvidence = false;
 let aiPlan = null;
 let aiPromptDraft = null;
 let dirty = false;
@@ -819,16 +820,20 @@ async function runChosen() {
 
 function renderResults() {
   const wrap = h('section', {}, h('h2', {}, 'Results'));
+  if (model.activeRun && model.activeRun.status === 'running') {
+    wrap.append(h('div', { class: 'card' }, 'A run is still in progress. Its result appears here when execution stops.'));
+  }
   if (!model.runs.length) {
     wrap.append(h('div', { class: 'card muted' }, 'Execution history is empty. Runs appear here after you execute a test.'));
     return wrap;
   }
   const list = h('div', { class: 'list' });
   model.runs.forEach((run) => {
+    const when = Number.isFinite(run.startedAt) ? new Date(run.startedAt).toLocaleString() : 'Date unavailable';
     list.append(h('button', {
-      class: `step${run.id === selectedRunId ? ' selected' : ''}`,
+      class: `run-row${run.id === selectedRunId ? ' selected' : ''}`,
       onclick: () => { selectedRunId = run.id; render(); },
-    }, h('span', { class: run.status }, run.status), h('span', {}, `${run.testName || 'Run'} · ${new Date(run.startedAt).toLocaleString()}`)));
+    }, h('span', { class: `pill ${run.status || 'unknown'}` }, run.status || 'unknown'), h('span', { class: 'wrap' }, `${run.testName || 'Run'} · ${when}`)));
   });
   const run = model.runs.find((item) => item.id === selectedRunId) || model.runs[0];
   wrap.append(h('div', { class: 'split' }, list, runDetail(run)));
@@ -836,19 +841,50 @@ function renderResults() {
 }
 
 function runDetail(run) {
-  const box = h('div', { class: 'card stack' },
-    h('strong', {}, run.testName || 'Run'),
-    h('div', {}, `Status: ${run.status}`),
-    run.error ? h('div', { class: 'failed' }, run.error) : null,
-    h('button', { onclick: () => download(`run-${run.id}.json`, JSON.stringify(run, null, 2)) }, 'Export result JSON')
+  const report = ASG.buildReport(run, { includeEvidence: false, secrets: [...runtimeSecrets.values()] });
+  const counts = report.counts;
+  const box = h('div', { class: 'card stack report-summary' },
+    h('div', { class: 'row' },
+      h('strong', { class: 'wrap' }, report.testName),
+      h('span', { class: `pill ${report.status}` }, report.status)
+    ),
+    h('div', { class: 'muted wrap' }, `${report.startedAt ? new Date(report.startedAt).toLocaleString() : 'Date unavailable'} · ${report.durationMs == null ? 'Duration unavailable' : `${(report.durationMs / 1000).toFixed(1)}s`}`),
+    h('div', { class: 'counts' },
+      h('span', { class: 'passed' }, `${counts.passed} passed`),
+      h('span', { class: 'failed' }, `${counts.failed} failed`),
+      h('span', { class: 'skipped' }, `${counts.skipped} skipped`)
+    ),
+    report.error ? h('div', { class: 'failed wrap' }, report.error) : null,
+    h('label', { class: 'inline wrap' },
+      h('input', {
+        type: 'checkbox',
+        id: 'includeEvidence',
+        checked: includeEvidence,
+        onchange: (event) => { includeEvidence = event.target.checked; },
+      }),
+      'Include available failure screenshots in the downloaded report'
+    ),
+    h('div', { class: 'row' },
+      h('button', { class: 'primary', onclick: () => downloadReport(run, 'html') }, 'Download HTML Report'),
+      h('button', { onclick: () => downloadReport(run, 'json') }, 'Export result JSON')
+    )
   );
-  (run.results || []).forEach((result) => {
-    const line = h('div', { class: result.status }, `${result.index + 1}. ${result.status} ${result.type}`);
-    if (result.message) line.append(h('div', {}, result.message));
-    if (result.expected != null) line.append(h('div', {}, `Expected: ${result.expected}`));
-    if (result.actual != null) line.append(h('div', {}, `Actual: ${result.actual}`));
+  (run.results || []).forEach((result, index) => {
+    const step = report.steps[index] || { index, type: result.type || 'unknown', status: result.status || 'unknown', message: '', expected: null, actual: null, screenshot: 'none' };
+    const line = h('div', { class: `result-step ${step.status}` },
+      h('div', { class: 'row' },
+        h('span', { class: `pill ${step.status}` }, step.status),
+        h('span', { class: 'wrap' }, `${step.index + 1}. ${step.type}`)
+      )
+    );
+    if (step.message) line.append(h('div', { class: 'wrap' }, step.message));
+    if (step.expected != null) line.append(h('div', { class: 'wrap' }, `Expected: ${step.expected}`));
+    if (step.actual != null) line.append(h('div', { class: 'wrap' }, `Actual: ${step.actual}`));
+    if (step.screenshot === 'unavailable') {
+      line.append(h('div', { class: 'muted wrap' }, step.screenshotDetail ? `Screenshot unavailable. ${step.screenshotDetail}` : 'Screenshot unavailable'));
+    }
     appendRepairs(line, run, result);
-    appendScreenshot(line, result);
+    if (result.screenshot) appendScreenshot(line, result);
     box.append(line);
   });
   return box;
@@ -899,8 +935,19 @@ function downloadFiles(framework, code) {
   }
 }
 
-function download(filename, text) {
-  const blob = new Blob([text], { type: 'text/plain' });
+function storeBuild() {
+  return !!(globalThis.ASG && ASG.storeBuild === true);
+}
+
+function downloadReport(run, kind) {
+  const report = ASG.buildReport(run, { includeEvidence, secrets: [...runtimeSecrets.values()] });
+  const safeId = String((run && run.id) || 'run').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40) || 'run';
+  if (kind === 'html') download(`report-${safeId}.html`, ASG.renderReportHtml(report), 'text/html');
+  else download(`report-${safeId}.json`, JSON.stringify(ASG.publicReport(report), null, 2), 'application/json');
+}
+
+function download(filename, text, type) {
+  const blob = new Blob([text], { type: type || 'text/plain' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -911,15 +958,17 @@ function download(filename, text) {
 
 function renderAi() {
   const settings = model.settings || {};
-  const live = settings.aiMode === 'live' && !!settings.aiProxyUrl;
+  const live = !storeBuild() && settings.aiMode === 'live' && !!settings.aiProxyUrl;
   const wrap = h('section', {},
     h('div', { class: 'row' },
       h('h2', {}, 'AI assistant'),
-      h('span', { class: live ? 'pill running' : 'pill paused', id: 'aiModePill' }, live ? 'Live AI' : 'Mock AI')
+      h('span', { class: live ? 'pill running' : 'pill idle', id: 'aiModePill' }, live ? 'Live AI' : 'Mock AI')
     ),
-    h('p', { class: 'muted' }, live
-      ? `Live AI sends the prompt and page structure to ${settings.aiProxyUrl}. The plan is still a proposal until you approve it.`
-      : 'Mock AI builds the plan on this machine. It does not call a provider.')
+    h('p', { class: 'muted wrap' }, storeBuild()
+      ? 'Mock AI creates the proposal on this computer. Live AI is not included in this package.'
+      : live
+        ? `Live AI sends the prompt and page structure to ${settings.aiProxyUrl}. The plan is still a proposal until you approve it.`
+        : 'Mock AI builds the plan on this machine. It does not call a provider.')
   );
   wrap.append(h('textarea', {
     class: 'prompt',
@@ -1025,7 +1074,7 @@ async function generatePlan() {
       prompt,
       origin,
       tabId: targetTab ? targetTab.id : null,
-      mode: model.settings.aiMode,
+      mode: storeBuild() ? 'mock' : model.settings.aiMode,
     });
     aiPlan = response.plan;
     aiPlan.planKey = response.planKey || '';
@@ -1073,33 +1122,40 @@ async function saveAiCase(caseIndex) {
 
 function renderSettings() {
   const settings = model.settings || defaultSettings();
-  return h('section', {},
+  const section = h('section', {},
     h('h2', {}, 'Settings'),
     labeled('Step timeout (ms)', h('input', { id: 'stepTimeout', type: 'number', value: String(settings.stepTimeoutMs) })),
-    labeled('Navigation timeout (ms)', h('input', { id: 'navTimeout', type: 'number', value: String(settings.navigationTimeoutMs) })),
-    labeled('AI mode', h('select', { id: 'aiMode' },
-      h('option', { value: 'mock', selected: settings.aiMode !== 'live' }, 'Mock (no network)'),
-      h('option', { value: 'live', selected: settings.aiMode === 'live' }, 'Live proxy'))),
-    labeled('AI proxy URL', h('input', { id: 'aiProxyUrl', type: 'url', value: settings.aiProxyUrl || '', placeholder: 'http://127.0.0.1:8787' })),
-    labeled('Proxy access token', h('input', { id: 'aiProxyToken', type: 'password', value: settings.aiProxyToken || '', autocomplete: 'off' })),
-    h('p', { class: 'muted' }, 'The token stays in extension storage and is sent only to the proxy URL you enter. This extension does not embed a provider key. The reference proxy listens on 127.0.0.1 and is not a public service.'),
-    h('div', { class: 'row' }, h('button', { class: 'primary', onclick: saveSettings }, 'Save settings'))
+    labeled('Navigation timeout (ms)', h('input', { id: 'navTimeout', type: 'number', value: String(settings.navigationTimeoutMs) }))
   );
+  if (storeBuild()) {
+    section.append(h('p', { class: 'card wrap' }, 'Live AI is not included in this package. Proposals are created on this computer.'));
+  } else {
+    section.append(
+      labeled('AI mode', h('select', { id: 'aiMode' },
+        h('option', { value: 'mock', selected: settings.aiMode !== 'live' }, 'Mock AI (no network)'),
+        h('option', { value: 'live', selected: settings.aiMode === 'live' }, 'Live AI (local proxy)'))),
+      labeled('AI proxy URL', h('input', { id: 'aiProxyUrl', type: 'url', value: settings.aiProxyUrl || '', placeholder: 'http://127.0.0.1:8787' })),
+      labeled('Proxy access token', h('input', { id: 'aiProxyToken', type: 'password', value: settings.aiProxyToken || '', autocomplete: 'off' })),
+      h('p', { class: 'muted wrap' }, 'The token stays in extension storage and is sent only to the proxy URL you enter. This extension does not embed a provider key. The reference proxy listens on 127.0.0.1 and is not part of the extension.')
+    );
+  }
+  section.append(h('div', { class: 'row' }, h('button', { class: 'primary', onclick: saveSettings }, 'Save settings')));
+  return section;
 }
 
 async function saveSettings() {
   errorText = '';
   try {
-    await send({
-      type: 'settings:set',
-      settings: {
-        stepTimeoutMs: Number(document.getElementById('stepTimeout').value),
-        navigationTimeoutMs: Number(document.getElementById('navTimeout').value),
-        aiMode: document.getElementById('aiMode').value,
-        aiProxyUrl: document.getElementById('aiProxyUrl').value,
-        aiProxyToken: document.getElementById('aiProxyToken').value,
-      },
-    });
+    const settings = {
+      stepTimeoutMs: Number(document.getElementById('stepTimeout').value),
+      navigationTimeoutMs: Number(document.getElementById('navTimeout').value),
+    };
+    if (!storeBuild()) {
+      settings.aiMode = document.getElementById('aiMode').value;
+      settings.aiProxyUrl = document.getElementById('aiProxyUrl').value;
+      settings.aiProxyToken = document.getElementById('aiProxyToken').value;
+    }
+    await send({ type: 'settings:set', settings });
     await reload();
     render();
   } catch (error) {

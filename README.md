@@ -29,6 +29,7 @@ Chrome 156 does not load this extension from `--load-extension` on the branded C
 6. Edit steps, add assertions, and save the test. Each step shows its primary locator, backup candidates, and a short reliability note. Choose "Use this locator" to switch candidates. A failed run can offer a replacement, and that replacement is applied only after you approve it.
 7. On Run tests, enter any secret parameters for that run. They are not written to extension storage.
 8. Pass, fail, and skipped are reported from the run that just executed. A failed step stays failed. Later steps are skipped.
+9. Open Results for the summary. Download HTML Report or Export result JSON. Screenshots stay out of the file unless you include them.
 
 Supported replay steps: navigate, click, double-click, fill text, select, checkbox, radio, submit, wait, assert visible, assert text, assert URL, assert exists.
 
@@ -58,7 +59,7 @@ The Export view generates the four existing formats from the same step list. Sec
 
 The AI assistant in mock mode builds a proposed plan on this machine. It does not call a provider. Selectors are copied from the open page when one element matches. The error message and the page a successful login should reach are left blank, because they were not visible when the plan was created. Edit those, then choose Approve and save. A run is the only thing that can pass or fail.
 
-Live mode calls only a proxy URL you save in Settings. The extension has no provider key. `server/ai-proxy.mjs` is a local reference proxy. It listens on `127.0.0.1` only, exits unless `PROXY_AUTH_TOKEN` and `AI_API_KEY` are set, and is not deployed. A live call sends the prompt and a compact page summary, not the DOM, cookies, or field values. Approving a live plan saves it. The same prompt and page summary reuse that plan and do not call the provider again. The Chrome Web Store policy notes are in `docs/AI_POLICY.md`.
+Live mode calls only a proxy URL you save in Settings. The extension has no provider key. `server/ai-proxy.mjs` is a local reference proxy. It listens on `127.0.0.1` only, exits unless `PROXY_AUTH_TOKEN` and `AI_API_KEY` are set, and is not deployed. A live call sends the prompt and a compact page summary, not the DOM, cookies, or field values. Approving a live plan saves it. The same prompt and page summary reuse that plan and do not call the provider again. The Chrome Web Store policy notes are in `docs/AI_POLICY.md` and `docs/STORE_POLICY.md`. The 1.0.0 store zip turns Live AI off and says so. Build it with `npm run package`. Installation, privacy, and known limits are in `docs/INSTALL.md`, `docs/PRIVACY.md`, and `docs/KNOWN_LIMITATIONS.md`.
 
 To run the real-provider check:
 

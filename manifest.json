@@ -1,8 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Browser Test Recorder",
-  "version": "0.9.0",
-  "description": "Record one site you choose, replay the steps in Chrome, and export Selenium, Playwright, Cypress, or REST Assured.",
+  "version": "1.0.0",
+  "description": "Record one site you choose, replay the steps in Chrome, and export Playwright, Selenium, Cypress, or REST Assured.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "permissions": [
     "storage",
     "scripting",
@@ -22,6 +28,10 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Browser Test Recorder"
+    "default_title": "Browser Test Recorder",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
   }
 }

@@ -30,6 +30,10 @@ The reference proxy keeps the provider key in its own environment. The extension
 
 An approved live plan is saved with the prompt and page-summary key. The same request reuses that saved plan and does not call the provider.
 
+## Store package on 26 November 2026
+
+The decision for the 1.0.0 store zip is in `docs/STORE_POLICY.md`. Remote plans stay out of that zip. `lib/build.js` in the development tree keeps `storeBuild` false, so Live AI still works here. The packaged copy sets `storeBuild` true, removes the Live AI controls, and says that Live AI is not included. The local proxy is not in the zip.
+
 ## Remaining policy risk
 
 A reviewer can still decide that a remotely produced list of clicks and assertions is remote configuration of extension behavior, even though the interpreter is closed and the user approves every plan. This document does not claim that decision would go in the extension's favor.

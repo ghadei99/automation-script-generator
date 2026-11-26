@@ -8,7 +8,8 @@ importScripts(
   'lib/reducer.js',
   'lib/ai.js',
   'lib/runner.js',
-  'lib/registration.js'
+  'lib/registration.js',
+  'lib/build.js'
 );
 
 const withLock = ASG.createMutex();
@@ -828,14 +829,21 @@ async function handleMessage(message, sender) {
 
   if (message.type === 'settings:set') {
     const current = await getSettings();
+    const requested = message.settings || {};
+    if (ASG.storeBuild && requested.aiMode === 'live') {
+      return { ok: false, message: 'Live AI is not included in this package. Proposals stay on this computer.' };
+    }
     const next = {
       ...current,
-      stepTimeoutMs: clampTimeout(message.settings && message.settings.stepTimeoutMs, current.stepTimeoutMs),
-      navigationTimeoutMs: clampTimeout(message.settings && message.settings.navigationTimeoutMs, current.navigationTimeoutMs),
-      aiMode: message.settings && message.settings.aiMode === 'live' ? 'live' : 'mock',
-      aiProxyUrl: String((message.settings && message.settings.aiProxyUrl) || '').trim().slice(0, 500),
-      aiProxyToken: String((message.settings && message.settings.aiProxyToken) || ''),
+      stepTimeoutMs: clampTimeout(requested.stepTimeoutMs, current.stepTimeoutMs),
+      navigationTimeoutMs: clampTimeout(requested.navigationTimeoutMs, current.navigationTimeoutMs),
     };
+    if (ASG.storeBuild) next.aiMode = 'mock';
+    else if (Object.prototype.hasOwnProperty.call(requested, 'aiMode')) {
+      next.aiMode = requested.aiMode === 'live' ? 'live' : 'mock';
+      next.aiProxyUrl = String(requested.aiProxyUrl || '').trim().slice(0, 500);
+      next.aiProxyToken = String(requested.aiProxyToken || '');
+    }
     await chrome.storage.local.set({ settings: next });
     return { ok: true, settings: { ...next, aiProxyToken: next.aiProxyToken ? 'stored' : '' } };
   }
@@ -850,6 +858,9 @@ async function handleMessage(message, sender) {
       evidence,
     };
     const planKey = ASG.planCacheKey(message.prompt, evidence);
+    if (ASG.storeBuild && mode === 'live') {
+      return { ok: false, message: 'Live AI is not included in this package. Proposals stay on this computer.' };
+    }
     if (mode !== 'live') {
       return { ok: true, mode: 'mock', planKey, plan: ASG.mockPlan(message.prompt, context) };
     }
