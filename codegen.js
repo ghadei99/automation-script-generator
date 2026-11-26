@@ -435,7 +435,7 @@ function renderCypressMethod(method) {
     case 'select':
       return `  ${method.name}(value) {\n    ${locator}.select(value);${flag}\n    return this;\n  }`;
     case 'submit':
-      return `  ${method.name}() {\n    ${locator}.submit();${flag}\n    return this;\n  }`;
+      return `  ${method.name}() {\n    ${locator}.then(($el) => {\n      const element = $el[0];\n      if (element && element.tagName === 'FORM' && typeof element.requestSubmit === 'function') element.requestSubmit();\n      else cy.wrap(element).click();\n    });${flag}\n    return this;\n  }`;
     case 'dblclick':
       return `  ${method.name}() {\n    ${locator}.dblclick();${flag}\n    return this;\n  }`;
     case 'wait':
@@ -487,7 +487,7 @@ function renderPlaywrightMethod(method) {
     case 'select':
       return `  async ${method.name}(value: string) {\n    await ${locator}.selectOption(value, { timeout: STEP_TIMEOUT });${flag}\n  }`;
     case 'submit':
-      return `  async ${method.name}() {\n    await ${locator}.evaluate((form: HTMLFormElement) => form.requestSubmit());${flag}\n  }`;
+      return `  async ${method.name}() {\n    await ${locator}.evaluate((element: Element) => {\n      if (element instanceof HTMLFormElement && typeof element.requestSubmit === 'function') element.requestSubmit();\n      else if (element instanceof HTMLElement) element.click();\n    });${flag}\n  }`;
     case 'dblclick':
       return `  async ${method.name}() {\n    await ${locator}.dblclick({ timeout: STEP_TIMEOUT });${flag}\n  }`;
     case 'wait':

@@ -298,8 +298,9 @@
     }
     if (step.type === 'submit') {
       const el = await waitForOne(step.selector, timeoutMs);
-      if (typeof el.requestSubmit === 'function') el.requestSubmit();
-      else el.submit();
+      if (el.tagName === 'FORM' && typeof el.requestSubmit === 'function') el.requestSubmit();
+      else if (typeof el.click === 'function') el.click();
+      else return { ok: false, message: 'This element cannot submit the form', actual: el.tagName || 'unknown' };
       return { ok: true, actual: 'submitted' };
     }
     if (step.type === 'wait' || step.type === 'assertExists') {

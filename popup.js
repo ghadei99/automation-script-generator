@@ -610,7 +610,7 @@ function moveStep(direction) {
   mutateSteps((steps) => {
     const [item] = steps.splice(selectedStep, 1);
     steps.splice(next, 0, item);
-  }).then(() => { selectedStep = next; }).catch((error) => { errorText = error.message; updateChrome(); });
+  }).then(() => { selectedStep = next; render(); }).catch((error) => { errorText = error.message; updateChrome(); });
 }
 
 function deleteStep() {
@@ -633,8 +633,9 @@ function addAssertion(type) {
     expected: type === 'assertText' ? ((current && current.textSnapshot) || '') : type === 'assertUrl' ? (model.session.origin || '') : undefined,
     match: type === 'assertText' || type === 'assertUrl' ? 'partial' : undefined,
   };
-  mutateSteps((steps) => { steps.splice(selectedStep + 1, 0, step); })
-    .then(() => { selectedStep += 1; })
+  const insertAt = selectedStep + 1;
+  mutateSteps((steps) => { steps.splice(insertAt, 0, step); })
+    .then(() => { selectedStep = insertAt; render(); })
     .catch((error) => { errorText = error.message; updateChrome(); });
 }
 
