@@ -145,6 +145,20 @@ try {
     grounded,
     grounded ? 'Invalid case, then success case, with login-page selectors only' : proposal.slice(0, 800),
   );
+  const unresolved = await ui.evaluate(() => {
+    const card = [...document.querySelectorAll('.card')].find((node) => node.innerText.includes('Invalid login'));
+    const button = card && [...card.querySelectorAll('button')].find((node) => node.textContent.trim() === 'Approve and save');
+    return {
+      unresolved: !!(card && card.innerText.includes('Unresolved')),
+      blocked: !!(button && button.disabled),
+      editor: !!(card && card.innerText.includes('Locator strategy') && card.innerText.includes('Verified candidates')),
+    };
+  });
+  record(
+    'Missing target stays editable and blocks approval',
+    unresolved.unresolved && unresolved.blocked && unresolved.editor,
+    JSON.stringify(unresolved),
+  );
 
   await editInCard(ui, 'Invalid login', 'Assert text equals ""', 'Assert text equals "Invalid credentials" on data-testid=error');
   await approveCard(ui, 'Invalid login');

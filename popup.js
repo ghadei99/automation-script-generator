@@ -7,8 +7,11 @@ let selectedStep = 0;
 let selectedTestId = '';
 let selectedRunId = '';
 let exportFramework = 'playwright';
+const runtimeSecrets = new Map();
 let aiPlan = null;
+let aiPromptDraft = null;
 let dirty = false;
+const defaultPrompt = 'Test the login form, verify invalid credentials show an error, then test a successful login.';
 
 function defaultSettings() {
   return {
@@ -226,7 +229,14 @@ async function refreshTarget() {
   }
 }
 
+function rememberRuntimeSecrets() {
+  document.querySelectorAll('input[data-param]').forEach((input) => {
+    if (input.dataset.param) runtimeSecrets.set(input.dataset.param, input.value);
+  });
+}
+
 function render() {
+  rememberRuntimeSecrets();
   updateChrome();
   const main = document.getElementById('main');
   main.replaceChildren();
@@ -362,10 +372,15 @@ function renderSteps() {
     wrap.append(savedTestLoader());
     return wrap;
   }
+  const blocked = ASG.blockingSteps ? ASG.blockingSteps(session.steps) : [];
+  if (blocked.length) {
+    wrap.append(h('div', { class: 'card step-warning' }, ASG.approvalBlock(session.steps, 'execution')));
+  }
   const list = h('div', { class: 'list' });
   session.steps.forEach((step, index) => {
     const copy = h('span', { class: 'step-copy' }, h('span', { class: 'step-title' }, stepTitle(step)));
     const warning = step.warning || (step.selector && step.selector.warning);
+    if (step.unresolved) copy.append(h('small', { class: 'step-warning' }, 'Unresolved'));
     if (warning) copy.append(h('small', { class: 'step-warning' }, warning));
     list.append(h('button', {
       class: `step${index === selectedStep ? ' selected' : ''}`,
@@ -401,9 +416,60 @@ function stepToolbar() {
   );
 }
 
+function candidateLabel(candidate) {
+  const name = candidate.name ? ` "${candidate.name}"` : '';
+  const ref = candidate.ref ? `${candidate.ref}: ` : '';
+  return `${ref}${candidate.strategy} ${candidate.value}${name}`;
+}
+
+function applyCandidateToStep(step, candidate) {
+  const all = (step.review && step.review.candidates) || [];
+  const siblings = candidate.ref ? all.filter((item) => item.ref === candidate.ref) : all;
+  const selector = ASG.selectorFromCandidate(candidate, siblings.length ? siblings : [candidate]);
+  if (!selector) return null;
+  const next = { ...step, selector, elementRef: candidate.ref || step.elementRef };
+  ASG.refreshStep(next);
+  return next;
+}
+
+function locatorChooser(step, apply, revalidate) {
+  const review = step.review || {};
+  const candidates = review.candidates || [];
+  const box = h('div', { class: 'stack' });
+  if (step.unresolved) box.append(h('div', { class: 'step-warning' }, 'Unresolved. This step will not run.'));
+  if (review.target) box.append(h('div', {}, `Target: ${review.target}`));
+  else if (step.elementRef) box.append(h('div', {}, `Target: ${step.elementRef}`));
+  if (review.reason && step.unresolved) box.append(h('div', { class: 'muted' }, review.reason));
+  if (Array.isArray(review.matches) && review.matches.length > 1) {
+    review.matches.forEach((match) => box.append(h('div', {}, match.label || match.ref)));
+  }
+  if (candidates.length) {
+    const select = h('select', {}, ...candidates.map((candidate, index) => h('option', { value: String(index) }, candidateLabel(candidate))));
+    box.append(labeled('Verified candidates', select));
+    box.append(h('button', { type: 'button', onclick: () => apply(candidates[Number(select.value)]) }, 'Use this locator'));
+  }
+  const strategies = ['testid', 'role', 'label', 'id', 'name', 'placeholder', 'css'];
+  const strategySelect = h('select', {}, ...strategies.map((strategy) => h('option', { value: strategy }, strategy)));
+  const valueInput = h('input', { type: 'text', value: '' });
+  box.append(labeled('Locator strategy', strategySelect));
+  box.append(labeled('Locator value', valueInput));
+  box.append(h('button', { type: 'button', onclick: () => {
+    const typed = candidates.find((candidate) => candidate.strategy === strategySelect.value && candidate.value === valueInput.value.trim());
+    if (!typed) {
+      errorText = 'That locator is not a verified candidate on the open page.';
+      updateChrome();
+      return;
+    }
+    apply(typed);
+  } }, 'Check locator'));
+  if (revalidate) box.append(h('button', { type: 'button', onclick: revalidate }, 'Revalidate'));
+  return box;
+}
+
 function renderStepEditor(step) {
   if (!step) return h('div', { class: 'card muted' }, 'Select a step.');
   const fields = [h('strong', {}, step.type), step.proposed ? h('div', { class: 'card' }, 'Proposed. This step has not been executed.') : null];
+  if (step.unresolved) fields.push(h('div', { class: 'step-warning' }, step.warning || 'Unresolved. This step will not run.'));
   if (step.type === 'navigate' || step.type === 'assertUrl') {
     fields.push(labeled('URL or expected text', h('input', {
       type: 'text', value: step.type === 'navigate' ? (step.url || '') : (step.expected || ''),
@@ -435,6 +501,10 @@ function renderStepEditor(step) {
     })));
   }
   fields.push(labeled('Locator', h('pre', { class: 'locator' }, locatorDetail(step.selector))));
+  if (step.review && step.review.target) fields.push(h('div', {}, `Target: ${step.review.target}`));
+  if (step.type !== 'navigate' && step.type !== 'assertUrl' && (step.unresolved || !step.selector)) {
+    fields.push(locatorChooser(step, chooseDraftLocator, () => { revalidateCurrent().catch((error) => { errorText = error.message; updateChrome(); }); }));
+  }
   if (step.selector && Array.isArray(step.selector.candidates) && step.selector.candidates.length) {
     const backups = h('div', { class: 'stack' }, h('strong', {}, 'Backup locators'));
     step.selector.candidates.forEach((candidate) => {
@@ -459,7 +529,7 @@ function renderStepEditor(step) {
     });
     fields.push(backups);
   }
-  if (step.selector) {
+  if (step.selector && !step.review) {
     fields.push(labeled('CSS override', h('input', {
       type: 'text', value: step.selector.uniqueCss || '',
       onchange: (event) => updateSelected({ selector: { ...step.selector, uniqueCss: event.target.value } }),
@@ -492,6 +562,42 @@ async function mutateSteps(mutator) {
   render();
 }
 
+function chooseDraftLocator(candidate) {
+  const step = model.session && model.session.steps[selectedStep];
+  const next = step && applyCandidateToStep(step, candidate);
+  if (!next) {
+    errorText = 'That locator is not a verified candidate on the open page.';
+    updateChrome();
+    return;
+  }
+  updateSelected({
+    selector: next.selector,
+    elementRef: next.elementRef,
+    unresolved: next.unresolved === true,
+    warning: next.warning || '',
+    review: next.review,
+  });
+}
+
+async function revalidateSteps(steps) {
+  return send({ type: 'ai:rebind', tabId: targetTab ? targetTab.id : null, steps });
+}
+
+async function revalidateCurrent() {
+  errorText = '';
+  const steps = model.session && model.session.steps;
+  if (!steps || !steps.length) return;
+  try {
+    const response = await revalidateSteps(steps);
+    await send({ type: 'steps:update', steps: response.steps });
+    await reload();
+    render();
+  } catch (error) {
+    errorText = error.message;
+    updateChrome();
+  }
+}
+
 function updateSelected(patch) {
   return mutateSteps((steps) => {
     steps[selectedStep] = { ...steps[selectedStep], ...patch };
@@ -504,7 +610,7 @@ function moveStep(direction) {
   mutateSteps((steps) => {
     const [item] = steps.splice(selectedStep, 1);
     steps.splice(next, 0, item);
-  }).then(() => { selectedStep = next; }).catch((error) => { errorText = error.message; updateChrome(); });
+  }).then(() => { selectedStep = next; render(); }).catch((error) => { errorText = error.message; updateChrome(); });
 }
 
 function deleteStep() {
@@ -527,8 +633,9 @@ function addAssertion(type) {
     expected: type === 'assertText' ? ((current && current.textSnapshot) || '') : type === 'assertUrl' ? (model.session.origin || '') : undefined,
     match: type === 'assertText' || type === 'assertUrl' ? 'partial' : undefined,
   };
-  mutateSteps((steps) => { steps.splice(selectedStep + 1, 0, step); })
-    .then(() => { selectedStep += 1; })
+  const insertAt = selectedStep + 1;
+  mutateSteps((steps) => { steps.splice(insertAt, 0, step); })
+    .then(() => { selectedStep = insertAt; render(); })
     .catch((error) => { errorText = error.message; updateChrome(); });
 }
 
@@ -577,7 +684,7 @@ function renderRun() {
   wrap.append(h('div', { class: 'row' },
     h('select', { id: 'runChoice', onchange: (event) => { selectedTestId = event.target.value; render(); } },
       ...options.map((option) => h('option', { value: option.id, selected: option.id === selectedTestId }, option.name))),
-    h('button', { class: 'primary', id: 'runButton', onclick: runChosen }, 'Run'),
+    h('button', { type: 'button', class: 'primary', id: 'runButton', onclick: runChosen }, 'Run'),
     h('button', { class: 'danger', id: 'stopRun', onclick: () => send({ type: 'run:stop' }) }, 'Stop execution')
   ));
   if (chosen.proposed || chosen.source === 'ai') {
@@ -588,7 +695,13 @@ function renderRun() {
     wrap.append(h('div', { class: 'card stack' },
       h('strong', {}, 'Runtime secrets'),
       h('p', { class: 'muted' }, 'These values are sent only for this run and are not written to extension storage.'),
-      ...secrets.map((name) => labeled(name, h('input', { type: 'password', 'data-param': name, autocomplete: 'off' })))
+      ...secrets.map((name) => labeled(name, h('input', {
+        type: 'password',
+        'data-param': name,
+        autocomplete: 'off',
+        value: runtimeSecrets.get(name) || '',
+        oninput: (event) => runtimeSecrets.set(name, event.target.value),
+      })))
     ));
   }
   wrap.append(renderActiveRun());
@@ -670,8 +783,24 @@ async function runChosen() {
     updateChrome();
     return;
   }
+  rememberRuntimeSecrets();
+  const selectedSteps = selectedTestId === 'draft'
+    ? ((model.session && model.session.steps) || [])
+    : (((model.tests.find((item) => item.id === selectedTestId) || {}).steps) || []);
   const params = {};
-  document.querySelectorAll('[data-param]').forEach((input) => { params[input.dataset.param] = input.value; });
+  ASG.listSecretParams(selectedSteps).forEach((name) => { params[name] = runtimeSecrets.get(name) || ''; });
+  const missing = ASG.missingSecretParams(selectedSteps, params);
+  if (missing.length) {
+    errorText = ASG.missingSecretMessage(missing);
+    updateChrome();
+    return;
+  }
+  const block = ASG.approvalBlock(selectedSteps, 'execution');
+  if (block) {
+    errorText = block;
+    updateChrome();
+    return;
+  }
   try {
     await send({
       type: 'run:start',
@@ -795,15 +924,19 @@ function renderAi() {
   wrap.append(h('textarea', {
     class: 'prompt',
     id: 'aiPrompt',
-  }, 'Test the login form, verify invalid credentials show an error, then test a successful login.'));
+    oninput: (event) => { aiPromptDraft = event.target.value; },
+  }, aiPromptDraft == null ? defaultPrompt : aiPromptDraft));
   wrap.append(h('div', { class: 'row' }, h('button', { class: 'primary', id: 'aiGenerate', onclick: generatePlan }, 'Generate proposal')));
   if (!aiPlan) return wrap;
   wrap.append(h('p', { class: 'muted' }, `Proposed, not executed. ${aiPlan.summary || ''}`));
   wrap.append(h('p', { class: 'muted' }, usageText(aiPlan, live)));
   aiPlan.cases.forEach((testCase, caseIndex) => {
     const box = h('div', { class: 'card stack ai-case' }, h('strong', {}, testCase.name));
+    const blocked = ASG.blockingSteps(testCase.steps);
+    if (blocked.length) box.append(h('div', { class: 'step-warning' }, ASG.approvalBlock(testCase.steps, 'approval')));
     testCase.steps.forEach((step, stepIndex) => {
       const copy = h('span', { class: 'step-copy' }, h('span', { class: 'step-title' }, stepTitle(step)));
+      if (step.unresolved) copy.append(h('small', { class: 'step-warning' }, 'Unresolved'));
       if (step.warning) copy.append(h('small', { class: 'step-warning' }, step.warning));
       box.append(h('div', { class: 'step' },
         h('span', { class: 'step-icon', 'aria-hidden': 'true' }, stepIcon(step.type)),
@@ -817,12 +950,16 @@ function renderAi() {
         'aria-label': `Edit step ${stepIndex + 1}`,
         onchange: (event) => editAiStep(caseIndex, stepIndex, event.target.value),
       }));
-      if (!step.selector && step.type !== 'navigate' && step.type !== 'assertUrl') {
-        box.append(h('div', { class: 'muted' }, 'No selector from the open page.'));
+      if (step.type !== 'navigate' && step.type !== 'assertUrl' && (step.unresolved || !step.selector)) {
+        box.append(locatorChooser(step, (candidate) => useAiCandidate(caseIndex, stepIndex, candidate), () => {
+          revalidateAiCase(caseIndex).catch((error) => { errorText = error.message; updateChrome(); });
+        }));
       }
+      box.append(h('button', { type: 'button', onclick: () => removeAiStep(caseIndex, stepIndex) }, 'Remove step'));
     });
     box.append(h('div', { class: 'ai-actions' },
-      h('button', { class: 'primary', onclick: () => saveAiCase(caseIndex) }, 'Approve and save'),
+      h('button', { class: 'primary', disabled: blocked.length > 0, onclick: () => saveAiCase(caseIndex) }, 'Approve and save'),
+      h('button', { type: 'button', onclick: () => { revalidateAiCase(caseIndex).catch((error) => { errorText = error.message; updateChrome(); }); } }, 'Revalidate'),
       h('button', { onclick: () => { view = 'run'; render(); } }, 'Run tests')
     ));
     wrap.append(box);
@@ -843,6 +980,39 @@ function usageText(plan, live) {
 
 function editAiStep(caseIndex, stepIndex, summary) {
   ASG.applyStepEdit(aiPlan.cases[caseIndex].steps[stepIndex], summary);
+  render();
+}
+
+function useAiCandidate(caseIndex, stepIndex, candidate) {
+  const step = aiPlan.cases[caseIndex].steps[stepIndex];
+  const next = applyCandidateToStep(step, candidate);
+  if (!next) {
+    errorText = 'That locator is not a verified candidate on the open page.';
+    updateChrome();
+    return;
+  }
+  aiPlan.cases[caseIndex].steps[stepIndex] = next;
+  errorText = '';
+  render();
+}
+
+function removeAiStep(caseIndex, stepIndex) {
+  const steps = aiPlan.cases[caseIndex].steps;
+  if (steps.length < 2) {
+    errorText = 'A case needs at least one step.';
+    updateChrome();
+    return;
+  }
+  steps.splice(stepIndex, 1);
+  errorText = '';
+  render();
+}
+
+async function revalidateAiCase(caseIndex) {
+  errorText = '';
+  const response = await revalidateSteps(aiPlan.cases[caseIndex].steps);
+  aiPlan.cases[caseIndex].steps = response.steps;
+  render();
 }
 
 async function generatePlan() {
@@ -871,6 +1041,12 @@ async function generatePlan() {
 
 async function saveAiCase(caseIndex) {
   const testCase = aiPlan.cases[caseIndex];
+  const block = ASG.approvalBlock(testCase.steps, 'approval');
+  if (block) {
+    errorText = block;
+    updateChrome();
+    return;
+  }
   try {
     const response = await send({
       type: 'tests:create',

@@ -1,0 +1,18 @@
+---
+description: Stay on the development branch and publish only verified milestones
+alwaysApply: true
+---
+
+# Git workflow
+
+Work on `feature/live-ai-verification` in `ghadei99/automation-script-generator`. Do not open a new feature branch for each task or bug fix.
+
+Commit a completed, verified milestone. Do not create empty or filler commits to change contribution statistics.
+
+Push those commits to `feature/live-ai-verification`. At the end of a session, run the regression suites and say whether the result is ready to merge into `master`. Merge into `master` only after the owner approves, and only when repository rules allow a direct merge. Do not open a pull request for that merge unless the rules require one.
+
+Keep `master` stable and deployable. Never force-push, rewrite history, or overwrite unrelated changes.
+
+Use the existing Git identity. Do not add `Co-authored-by: Cursor`, Cursor Agent attribution, or any AI credit trailer.
+
+Preserve working behavior, tests, documentation, and project history.
